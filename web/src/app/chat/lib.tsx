@@ -1,35 +1,40 @@
 import {
   AnswerPiecePacket,
-  DanswerDocument,
+  OnyxDocument,
   Filters,
+  DocumentInfoPacket,
   StreamStopInfo,
+  ProSearchPacket,
+  SubQueryPiece,
+  AgentAnswerPiece,
+  SubQuestionPiece,
+  ExtendedToolResponse,
+  RefinedAnswerImprovement,
 } from "@/lib/search/interfaces";
-import { handleSSEStream, handleStream } from "@/lib/search/streamingUtils";
+import { handleSSEStream } from "@/lib/search/streamingUtils";
 import { ChatState, FeedbackType } from "./types";
-import {
-  Dispatch,
-  MutableRefObject,
-  RefObject,
-  SetStateAction,
-  useEffect,
-  useRef,
-} from "react";
+import { MutableRefObject, RefObject, useEffect, useRef } from "react";
 import {
   BackendMessage,
   ChatSession,
   DocumentsResponse,
   FileDescriptor,
-  ImageGenerationDisplay,
+  FileChatDisplay,
   Message,
   MessageResponseIDInfo,
   RetrievalType,
   StreamingError,
   ToolCallMetadata,
+  AgenticMessageResponseIDInfo,
+  UserKnowledgeFilePacket,
 } from "./interfaces";
 import { Persona } from "../admin/assistants/interfaces";
 import { ReadonlyURLSearchParams } from "next/navigation";
 import { SEARCH_PARAM_NAMES } from "./searchParams";
 import { Settings } from "../admin/settings/interfaces";
+import { INTERNET_SEARCH_TOOL_ID } from "./tools/constants";
+import { SEARCH_TOOL_ID } from "./tools/constants";
+import { IIMAGE_GENERATION_TOOL_ID } from "./tools/constants";
 
 interface ChatRetentionInfo {
   chatRetentionDays: number;
@@ -44,10 +49,10 @@ export function getChatRetentionInfo(
 ): ChatRetentionInfo {
   // If `maximum_chat_retention_days` isn't set- never display retention warning.
   const chatRetentionDays = settings.maximum_chat_retention_days || 10000;
-  const createdDate = new Date(chatSession.time_created);
+  const updatedDate = new Date(chatSession.time_updated);
   const today = new Date();
   const daysFromCreation = Math.ceil(
-    (today.getTime() - createdDate.getTime()) / (1000 * 3600 * 24)
+    (today.getTime() - updatedDate.getTime()) / (1000 * 3600 * 24)
   );
   const daysUntilExpiration = chatRetentionDays - daysFromCreation;
   const showRetentionWarning =
@@ -61,8 +66,8 @@ export function getChatRetentionInfo(
   };
 }
 
-export async function updateModelOverrideForChatSession(
-  chatSessionId: number,
+export async function updateLlmOverrideForChatSession(
+  chatSessionId: string,
   newAlternateModel: string
 ) {
   const response = await fetch("/api/chat/update-chat-session-model", {
@@ -78,10 +83,27 @@ export async function updateModelOverrideForChatSession(
   return response;
 }
 
+export async function updateTemperatureOverrideForChatSession(
+  chatSessionId: string,
+  newTemperature: number
+) {
+  const response = await fetch("/api/chat/update-chat-session-temperature", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      chat_session_id: chatSessionId,
+      temperature_override: newTemperature,
+    }),
+  });
+  return response;
+}
+
 export async function createChatSession(
   personaId: number,
   description: string | null
-): Promise<number> {
+): Promise<string> {
   const createChatSessionResponse = await fetch(
     "/api/chat/create-chat-session",
     {
@@ -96,7 +118,7 @@ export async function createChatSession(
     }
   );
   if (!createChatSessionResponse.ok) {
-    console.log(
+    console.error(
       `Failed to create chat session - ${createChatSessionResponse.status}`
     );
     throw Error("Failed to create chat session");
@@ -105,41 +127,45 @@ export async function createChatSession(
   return chatSessionResponseJson.chat_session_id;
 }
 
+export const isPacketType = (data: any): data is PacketType => {
+  return (
+    data.hasOwnProperty("answer_piece") ||
+    data.hasOwnProperty("top_documents") ||
+    data.hasOwnProperty("tool_name") ||
+    data.hasOwnProperty("file_ids") ||
+    data.hasOwnProperty("error") ||
+    data.hasOwnProperty("message_id") ||
+    data.hasOwnProperty("stop_reason") ||
+    data.hasOwnProperty("user_message_id") ||
+    data.hasOwnProperty("reserved_assistant_message_id")
+  );
+};
+
 export type PacketType =
   | ToolCallMetadata
   | BackendMessage
   | AnswerPiecePacket
+  | DocumentInfoPacket
   | DocumentsResponse
-  | ImageGenerationDisplay
+  | FileChatDisplay
   | StreamingError
   | MessageResponseIDInfo
-  | StreamStopInfo;
+  | StreamStopInfo
+  | ProSearchPacket
+  | SubQueryPiece
+  | AgentAnswerPiece
+  | SubQuestionPiece
+  | ExtendedToolResponse
+  | RefinedAnswerImprovement
+  | AgenticMessageResponseIDInfo
+  | UserKnowledgeFilePacket;
 
-export async function* sendMessage({
-  regenerate,
-  message,
-  fileDescriptors,
-  parentMessageId,
-  chatSessionId,
-  promptId,
-  filters,
-  selectedDocumentIds,
-  queryOverride,
-  forceSearch,
-  modelProvider,
-  modelVersion,
-  temperature,
-  systemPromptOverride,
-  useExistingUserMessage,
-  alternateAssistantId,
-  signal,
-}: {
+export interface SendMessageParams {
   regenerate: boolean;
   message: string;
   fileDescriptors: FileDescriptor[];
   parentMessageId: number | null;
-  chatSessionId: number;
-  promptId: number | null | undefined;
+  chatSessionId: string;
   filters: Filters | null;
   selectedDocumentIds: number[] | null;
   queryOverride?: string;
@@ -151,28 +177,51 @@ export async function* sendMessage({
   useExistingUserMessage?: boolean;
   alternateAssistantId?: number;
   signal?: AbortSignal;
-}): AsyncGenerator<PacketType, void, unknown> {
+  userFileIds?: number[];
+  userFolderIds?: number[];
+  useLanggraph?: boolean;
+}
+
+export async function* sendMessage({
+  regenerate,
+  message,
+  fileDescriptors,
+  userFileIds,
+  userFolderIds,
+  parentMessageId,
+  chatSessionId,
+  filters,
+  selectedDocumentIds,
+  queryOverride,
+  forceSearch,
+  modelProvider,
+  modelVersion,
+  temperature,
+  systemPromptOverride,
+  useExistingUserMessage,
+  alternateAssistantId,
+  signal,
+  useLanggraph,
+}: SendMessageParams): AsyncGenerator<PacketType, void, unknown> {
   const documentsAreSelected =
     selectedDocumentIds && selectedDocumentIds.length > 0;
-
   const body = JSON.stringify({
     alternate_assistant_id: alternateAssistantId,
     chat_session_id: chatSessionId,
     parent_message_id: parentMessageId,
     message: message,
-    prompt_id: promptId,
+    // just use the default prompt for the assistant.
+    // should remove this in the future, as we don't support multiple prompts for a
+    // single assistant anyways
+    prompt_id: null,
     search_doc_ids: documentsAreSelected ? selectedDocumentIds : null,
     file_descriptors: fileDescriptors,
+    user_file_ids: userFileIds,
+    user_folder_ids: userFolderIds,
     regenerate,
     retrieval_options: !documentsAreSelected
       ? {
-          run_search:
-            promptId === null ||
-            promptId === undefined ||
-            queryOverride ||
-            forceSearch
-              ? "always"
-              : "auto",
+          run_search: queryOverride || forceSearch ? "always" : "auto",
           real_time: true,
           filters: filters,
         }
@@ -192,6 +241,7 @@ export async function* sendMessage({
           }
         : null,
     use_existing_user_message: useExistingUserMessage,
+    use_agentic_search: useLanggraph ?? false,
   });
 
   const response = await fetch(`/api/chat/send-message`, {
@@ -207,10 +257,10 @@ export async function* sendMessage({
     throw new Error(`HTTP error! status: ${response.status}`);
   }
 
-  yield* handleSSEStream<PacketType>(response);
+  yield* handleSSEStream<PacketType>(response, signal);
 }
 
-export async function nameChatSession(chatSessionId: number, message: string) {
+export async function nameChatSession(chatSessionId: string) {
   const response = await fetch("/api/chat/rename-chat-session", {
     method: "PUT",
     headers: {
@@ -219,7 +269,6 @@ export async function nameChatSession(chatSessionId: number, message: string) {
     body: JSON.stringify({
       chat_session_id: chatSessionId,
       name: null,
-      first_message: message,
     }),
   });
   return response;
@@ -259,7 +308,7 @@ export async function handleChatFeedback(
   return response;
 }
 export async function renameChatSession(
-  chatSessionId: number,
+  chatSessionId: string,
   newName: string
 ) {
   const response = await fetch(`/api/chat/rename-chat-session`, {
@@ -270,19 +319,28 @@ export async function renameChatSession(
     body: JSON.stringify({
       chat_session_id: chatSessionId,
       name: newName,
-      first_message: null,
     }),
   });
   return response;
 }
 
-export async function deleteChatSession(chatSessionId: number) {
+export async function deleteChatSession(chatSessionId: string) {
   const response = await fetch(
     `/api/chat/delete-chat-session/${chatSessionId}`,
     {
       method: "DELETE",
     }
   );
+  return response;
+}
+
+export async function deleteAllChatSessions() {
+  const response = await fetch(`/api/chat/delete-all-chat-sessions`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
   return response;
 }
 
@@ -316,14 +374,18 @@ export function getHumanAndAIMessageFromMessageNumber(
   if (messageInd !== -1) {
     const matchingMessage = messageHistory[messageInd];
     const pairedMessage =
-      matchingMessage.type === "user"
+      matchingMessage && matchingMessage.type === "user"
         ? messageHistory[messageInd + 1]
         : messageHistory[messageInd - 1];
 
     const humanMessage =
-      matchingMessage.type === "user" ? matchingMessage : pairedMessage;
+      matchingMessage && matchingMessage.type === "user"
+        ? matchingMessage
+        : pairedMessage;
     const aiMessage =
-      matchingMessage.type === "user" ? pairedMessage : matchingMessage;
+      matchingMessage && matchingMessage.type === "user"
+        ? pairedMessage
+        : matchingMessage;
 
     return {
       humanMessage,
@@ -342,7 +404,7 @@ export function getCitedDocumentsFromMessage(message: Message) {
     return [];
   }
 
-  const documentsWithCitationKey: [string, DanswerDocument][] = [];
+  const documentsWithCitationKey: [string, OnyxDocument][] = [];
   Object.entries(message.citations).forEach(([citationKey, documentDbId]) => {
     const matchingDocument = message.documents!.find(
       (document) => document.db_doc_id === documentDbId
@@ -361,24 +423,36 @@ export function groupSessionsByDateRange(chatSessions: ChatSession[]) {
   const groups: Record<string, ChatSession[]> = {
     Today: [],
     "Previous 7 Days": [],
-    "Previous 30 Days": [],
-    "Over 30 days ago": [],
+    "Previous 30 days": [],
+    "Over 30 days": [],
   };
 
   chatSessions.forEach((chatSession) => {
-    const chatSessionDate = new Date(chatSession.time_created);
+    const chatSessionDate = new Date(chatSession.time_updated);
 
     const diffTime = today.getTime() - chatSessionDate.getTime();
     const diffDays = diffTime / (1000 * 3600 * 24); // Convert time difference to days
 
     if (diffDays < 1) {
-      groups["Today"].push(chatSession);
+      const groups_today = groups["Today"];
+      if (groups_today) {
+        groups_today.push(chatSession);
+      }
     } else if (diffDays <= 7) {
-      groups["Previous 7 Days"].push(chatSession);
+      const groups_7 = groups["Previous 7 Days"];
+      if (groups_7) {
+        groups_7.push(chatSession);
+      }
     } else if (diffDays <= 30) {
-      groups["Previous 30 Days"].push(chatSession);
+      const groups_30 = groups["Previous 30 Days"];
+      if (groups_30) {
+        groups_30.push(chatSession);
+      }
     } else {
-      groups["Over 30 days ago"].push(chatSession);
+      const groups_over_30 = groups["Over 30 days"];
+      if (groups_over_30) {
+        groups_over_30.push(chatSession);
+      }
     }
   });
 
@@ -416,15 +490,20 @@ export function processRawChatHistory(
     } else {
       retrievalType = RetrievalType.None;
     }
+    const subQuestions = messageInfo.sub_questions?.map((q) => ({
+      ...q,
+      is_complete: true,
+    }));
 
     const message: Message = {
       messageId: messageInfo.message_id,
       message: messageInfo.message,
       type: messageInfo.message_type as "user" | "assistant",
       files: messageInfo.files,
-      alternateAssistantID: messageInfo.alternate_assistant_id
-        ? Number(messageInfo.alternate_assistant_id)
-        : null,
+      alternateAssistantID:
+        messageInfo.alternate_assistant_id !== null
+          ? Number(messageInfo.alternate_assistant_id)
+          : null,
       // only include these fields if this is an assistant message so that
       // this is identical to what is computed at streaming time
       ...(messageInfo.message_type === "assistant"
@@ -435,11 +514,15 @@ export function processRawChatHistory(
             citations: messageInfo?.citations || {},
           }
         : {}),
-      toolCalls: messageInfo.tool_calls,
+      toolCall: messageInfo.tool_call,
       parentMessageId: messageInfo.parent_message,
       childrenMessageIds: [],
       latestChildMessageId: messageInfo.latest_child_message,
       overridden_model: messageInfo.overridden_model,
+      sub_questions: subQuestions,
+      isImprovement:
+        (messageInfo.refined_answer_improvement as unknown as boolean) || false,
+      is_agentic: messageInfo.is_agentic,
     };
 
     messages.set(messageInfo.message_id, message);
@@ -488,8 +571,13 @@ export function buildLatestMessageChain(
     }
   }
 
+  //
   // remove system message
-  if (finalMessageList.length > 0 && finalMessageList[0].type === "system") {
+  if (
+    finalMessageList.length > 0 &&
+    finalMessageList[0] &&
+    finalMessageList[0].type === "system"
+  ) {
     finalMessageList = finalMessageList.slice(1);
   }
   return finalMessageList.concat(additionalMessagesOnMainline);
@@ -569,14 +657,18 @@ export function personaIncludesRetrieval(selectedPersona: Persona) {
   return selectedPersona.tools.some(
     (tool) =>
       tool.in_code_tool_id &&
-      ["SearchTool", "InternetSearchTool"].includes(tool.in_code_tool_id)
+      [SEARCH_TOOL_ID, INTERNET_SEARCH_TOOL_ID].includes(
+        tool.in_code_tool_id
+      ) &&
+      selectedPersona.user_file_ids?.length === 0 &&
+      selectedPersona.user_folder_ids?.length === 0
   );
 }
 
 export function personaIncludesImage(selectedPersona: Persona) {
   return selectedPersona.tools.some(
     (tool) =>
-      tool.in_code_tool_id && tool.in_code_tool_id == "ImageGenerationTool"
+      tool.in_code_tool_id && tool.in_code_tool_id == IIMAGE_GENERATION_TOOL_ID
   );
 }
 
@@ -590,8 +682,8 @@ const PARAMS_TO_SKIP = [
 ];
 
 export function buildChatUrl(
-  existingSearchParams: ReadonlyURLSearchParams,
-  chatSessionId: number | null,
+  existingSearchParams: ReadonlyURLSearchParams | null,
+  chatSessionId: string | null,
   personaId: number | null,
   search?: boolean
 ) {
@@ -607,7 +699,7 @@ export function buildChatUrl(
     finalSearchParams.push(`${SEARCH_PARAM_NAMES.PERSONA_ID}=${personaId}`);
   }
 
-  existingSearchParams.forEach((value, key) => {
+  existingSearchParams?.forEach((value, key) => {
     if (!PARAMS_TO_SKIP.includes(key)) {
       finalSearchParams.push(`${key}=${value}`);
     }
@@ -641,30 +733,40 @@ export async function uploadFilesForChat(
   return [responseJson.files as FileDescriptor[], null];
 }
 
-export async function useScrollonStream({
+export function useScrollonStream({
   chatState,
   scrollableDivRef,
   scrollDist,
   endDivRef,
-  distance,
   debounceNumber,
+  mobile,
+  enableAutoScroll,
 }: {
   chatState: ChatState;
   scrollableDivRef: RefObject<HTMLDivElement>;
   scrollDist: MutableRefObject<number>;
   endDivRef: RefObject<HTMLDivElement>;
-  distance: number;
   debounceNumber: number;
   mobile?: boolean;
+  enableAutoScroll?: boolean;
 }) {
+  const mobileDistance = 900; // distance that should "engage" the scroll
+  const desktopDistance = 500; // distance that should "engage" the scroll
+
+  const distance = mobile ? mobileDistance : desktopDistance;
+
   const preventScrollInterference = useRef<boolean>(false);
   const preventScroll = useRef<boolean>(false);
   const blockActionRef = useRef<boolean>(false);
   const previousScroll = useRef<number>(0);
 
   useEffect(() => {
+    if (!enableAutoScroll) {
+      return;
+    }
+
     if (chatState != "input" && scrollableDivRef && scrollableDivRef.current) {
-      let newHeight: number = scrollableDivRef.current?.scrollTop!;
+      const newHeight: number = scrollableDivRef.current?.scrollTop!;
       const heightDifference = newHeight - previousScroll.current;
       previousScroll.current = newHeight;
 
@@ -697,7 +799,7 @@ export async function useScrollonStream({
         endDivRef.current
       ) {
         // catch up if necessary!
-        const scrollAmount = scrollDist.current + 10000;
+        const scrollAmount = scrollDist.current + (mobile ? 1000 : 10000);
         if (scrollDist.current > 300) {
           // if (scrollDist.current > 140) {
           endDivRef.current.scrollIntoView();
@@ -720,7 +822,7 @@ export async function useScrollonStream({
 
   // scroll on end of stream if within distance
   useEffect(() => {
-    if (scrollableDivRef?.current && chatState == "input") {
+    if (scrollableDivRef?.current && chatState == "input" && enableAutoScroll) {
       if (scrollDist.current < distance - 50) {
         scrollableDivRef?.current?.scrollBy({
           left: 0,
@@ -729,5 +831,5 @@ export async function useScrollonStream({
         });
       }
     }
-  }, [chatState]);
+  }, [chatState, distance, scrollDist, scrollableDivRef, enableAutoScroll]);
 }

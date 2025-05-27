@@ -1,5 +1,6 @@
-import { DanswerDocument } from "@/lib/search/interfaces";
+import { OnyxDocument } from "@/lib/search/interfaces";
 import { useState } from "react";
+import { FileResponse } from "./my-documents/DocumentsContext";
 
 interface DocumentInfo {
   num_chunks: number;
@@ -18,21 +19,39 @@ async function fetchDocumentLength(documentId: string) {
 }
 
 export function useDocumentSelection(): [
-  DanswerDocument[],
-  (document: DanswerDocument) => void,
+  FileResponse[],
+  (file: FileResponse) => void,
+  (file: FileResponse) => void,
+  OnyxDocument[],
+  (document: OnyxDocument) => void,
   () => void,
   number,
 ] {
-  const [selectedDocuments, setSelectedDocuments] = useState<DanswerDocument[]>(
+  const [selectedFiles, setSelectedFiles] = useState<FileResponse[]>([]);
+  const [selectedDocuments, setSelectedDocuments] = useState<OnyxDocument[]>(
     []
   );
+  const removeSelectedFile = (file: FileResponse) => {
+    setSelectedFiles(selectedFiles.filter((f) => f.id !== file.id));
+  };
+
+  const addSelectedFile = (file: FileResponse) => {
+    // Check if file already exists in the array to avoid duplicates
+    setSelectedFiles((files) => {
+      // Check if file already exists in the array to avoid duplicates
+      if (files.some((f) => f.id === file.id)) {
+        return files;
+      }
+      return [...files, file];
+    });
+  };
   const [totalTokens, setTotalTokens] = useState(0);
   const selectedDocumentIds = selectedDocuments.map(
     (document) => document.document_id
   );
   const documentIdToLength = new Map<string, number>();
 
-  function toggleDocumentSelection(document: DanswerDocument) {
+  function toggleDocumentSelection(document: OnyxDocument) {
     const documentId = document.document_id;
     const isAdding = !selectedDocumentIds.includes(documentId);
     if (!isAdding) {
@@ -61,6 +80,9 @@ export function useDocumentSelection(): [
   }
 
   return [
+    selectedFiles,
+    addSelectedFile,
+    removeSelectedFile,
     selectedDocuments,
     toggleDocumentSelection,
     clearDocuments,

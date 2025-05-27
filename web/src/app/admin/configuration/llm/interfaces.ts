@@ -1,34 +1,44 @@
-import {
-  AnthropicIcon,
-  AWSIcon,
-  AzureIcon,
-  CPUIcon,
-  OpenAIIcon,
-  OpenSourceIcon,
-} from "@/components/icons/icons";
-import { FaRobot } from "react-icons/fa";
-
 export interface CustomConfigKey {
   name: string;
+  display_name: string;
   description: string | null;
   is_required: boolean;
   is_secret: boolean;
+  key_type: "text_input" | "file_input";
+}
+
+export interface ModelConfigurationUpsertRequest {
+  name: string;
+  is_visible: boolean;
+  max_input_tokens: number | null;
+}
+
+export interface ModelConfiguration extends ModelConfigurationUpsertRequest {
+  supports_image_input: boolean;
 }
 
 export interface WellKnownLLMProviderDescriptor {
   name: string;
   display_name: string;
 
+  deployment_name_required: boolean;
   api_key_required: boolean;
   api_base_required: boolean;
   api_version_required: boolean;
-  custom_config_keys: CustomConfigKey[] | null;
 
-  llm_names: string[];
+  single_model_supported: boolean;
+  custom_config_keys: CustomConfigKey[] | null;
+  model_configurations: ModelConfiguration[];
   default_model: string | null;
   default_fast_model: string | null;
   is_public: boolean;
   groups: number[];
+}
+
+export interface LLMModelDescriptor {
+  modelName: string;
+  provider: string;
+  maxTokens: number;
 }
 
 export interface LLMProvider {
@@ -42,39 +52,29 @@ export interface LLMProvider {
   fast_default_model_name: string | null;
   is_public: boolean;
   groups: number[];
-  display_model_names: string[] | null;
+  deployment_name: string | null;
+  default_vision_model: string | null;
+  is_default_vision_provider: boolean | null;
+  model_configurations: ModelConfiguration[];
 }
 
-export interface FullLLMProvider extends LLMProvider {
+export interface LLMProviderView extends LLMProvider {
   id: number;
   is_default_provider: boolean | null;
-  model_names: string[];
   icon?: React.FC<{ size?: number; className?: string }>;
+}
+
+export interface VisionProvider extends LLMProviderView {
+  vision_models: string[];
 }
 
 export interface LLMProviderDescriptor {
   name: string;
   provider: string;
-  model_names: string[];
   default_model_name: string;
   fast_default_model_name: string | null;
   is_default_provider: boolean | null;
   is_public: boolean;
   groups: number[];
-  display_model_names: string[] | null;
+  model_configurations: ModelConfiguration[];
 }
-
-export const getProviderIcon = (providerName: string) => {
-  switch (providerName) {
-    case "openai":
-      return OpenAIIcon;
-    case "anthropic":
-      return AnthropicIcon;
-    case "bedrock":
-      return AWSIcon;
-    case "azure":
-      return AzureIcon;
-    default:
-      return CPUIcon;
-  }
-};

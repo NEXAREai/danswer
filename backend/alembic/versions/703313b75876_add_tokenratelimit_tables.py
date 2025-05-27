@@ -5,11 +5,12 @@ Revises: fad14119fb92
 Create Date: 2024-04-15 01:36:02.952809
 
 """
+
 import json
 from typing import cast
 from alembic import op
 import sqlalchemy as sa
-from danswer.dynamic_configs.factory import get_dynamic_config_store
+from onyx.key_value_store.factory import get_kv_store
 
 # revision identifiers, used by Alembic.
 revision = "703313b75876"
@@ -54,9 +55,7 @@ def upgrade() -> None:
     )
 
     try:
-        settings_json = cast(
-            str, get_dynamic_config_store().load("token_budget_settings")
-        )
+        settings_json = cast(str, get_kv_store().load("token_budget_settings"))
         settings = json.loads(settings_json)
 
         is_enabled = settings.get("enable_token_budget", False)
@@ -71,7 +70,7 @@ def upgrade() -> None:
             )
 
         # Delete the dynamic config
-        get_dynamic_config_store().delete("token_budget_settings")
+        get_kv_store().delete("token_budget_settings")
 
     except Exception:
         # Ignore if the dynamic config is not found

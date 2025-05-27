@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Modal } from "@/components/Modal";
 import { MinimalUserSnapshot, User } from "@/lib/types";
-import { Button, Divider, Text } from "@tremor/react";
+import { Button } from "@/components/ui/button";
 import { FiPlus, FiX } from "react-icons/fi";
 import { Persona } from "@/app/admin/assistants/interfaces";
 import { SearchMultiSelectDropdown } from "@/components/Dropdown";
@@ -13,9 +13,9 @@ import {
 } from "@/lib/assistants/shareAssistant";
 import { usePopup } from "@/components/admin/connectors/Popup";
 import { Bubble } from "@/components/Bubble";
-import { useRouter } from "next/navigation";
 import { AssistantIcon } from "@/components/assistants/AssistantIcon";
 import { Spinner } from "@/components/Spinner";
+import { useAssistants } from "@/components/context/AssistantsContext";
 
 interface AssistantSharingModalProps {
   assistant: Persona;
@@ -32,13 +32,13 @@ export function AssistantSharingModal({
   show,
   onClose,
 }: AssistantSharingModalProps) {
-  const router = useRouter();
+  const { refreshAssistants } = useAssistants();
   const { popup, setPopup } = usePopup();
   const [isUpdating, setIsUpdating] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState<MinimalUserSnapshot[]>([]);
 
   const assistantName = assistant.name;
-  const sharedUsersWithoutOwner = assistant.users.filter(
+  const sharedUsersWithoutOwner = (assistant.users || [])?.filter(
     (u) => u.id !== assistant.owner?.id
   );
 
@@ -54,7 +54,7 @@ export function AssistantSharingModal({
       assistant,
       selectedUsers.map((user) => user.id)
     );
-    router.refresh();
+    await refreshAssistants();
 
     const elapsedTime = Date.now() - startTime;
     const remainingTime = Math.max(0, 1000 - elapsedTime);
@@ -96,7 +96,7 @@ export function AssistantSharingModal({
                   assistant,
                   [u.id]
                 );
-                router.refresh();
+                await refreshAssistants();
 
                 const elapsedTime = Date.now() - startTime;
                 const remainingTime = Math.max(0, 1000 - elapsedTime);
@@ -138,14 +138,13 @@ export function AssistantSharingModal({
         onOutsideClick={onClose}
       >
         <div>
-          {isUpdating && <Spinner />}
           <p className="text-text-600 text-lg mb-6">
             Manage access to this assistant by sharing it with other users.
           </p>
 
           <div className="mb-8 flex flex-col gap-y-4">
             <h3 className="text-lg font-semibold">Current Status</h3>
-            <div className="bg-gray-50 rounded-lg">{sharedStatus}</div>
+            <div className="bg-background-50 rounded-lg">{sharedStatus}</div>
           </div>
 
           <div className="mb-8 flex flex-col gap-y-4">
@@ -175,8 +174,8 @@ export function AssistantSharingModal({
                 ]);
               }}
               itemComponent={({ option }) => (
-                <div className="flex items-center px-4 py-2.5 cursor-pointer hover:bg-gray-100">
-                  <UsersIcon className="mr-3 text-gray-500" />
+                <div className="flex items-center px-4 py-2.5 cursor-pointer hover:bg-background-100">
+                  <UsersIcon className="mr-3 text-text-500" />
                   <span className="flex-grow">{option.name}</span>
                   <FiPlus className="text-blue-500" />
                 </div>
@@ -186,7 +185,7 @@ export function AssistantSharingModal({
 
           {selectedUsers.length > 0 && (
             <div className="mb-6">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">
+              <h4 className="text-sm font-medium text-text-700 mb-2">
                 Selected Users:
               </h4>
               <div className="flex flex-wrap gap-2">
@@ -217,14 +216,14 @@ export function AssistantSharingModal({
                 setSelectedUsers([]);
               }}
               size="sm"
-              color="blue"
-              className="w-full"
+              variant="secondary"
             >
               Share with Selected Users
             </Button>
           )}
         </div>
       </Modal>
+      {isUpdating && <Spinner />}
     </>
   );
 }

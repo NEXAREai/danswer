@@ -1,4 +1,4 @@
-import { ErrorMessage, Field } from "formik";
+import { ErrorMessage, Field, useField } from "formik";
 
 import {
   ExplanationText,
@@ -96,18 +96,18 @@ export function AdminTextField({
         name={name}
         id={name}
         className={`
-                ${small && "text-sm"}
-                border 
-                border-border 
-                rounded 
-                w-full 
-                bg-input
-                py-2 
-                px-3 
-                mt-1
-                ${heightString}
-                ${fontSize}
-                ${isCode ? " font-mono" : ""}
+          ${small && "text-sm"}
+          border 
+          border-border 
+          rounded 
+          w-full 
+          bg-input
+          py-2 
+          px-3 
+          mt-1
+          ${heightString}
+          ${fontSize}
+          ${isCode ? " font-mono" : ""}
           `}
         disabled={disabled}
         placeholder={placeholder}
@@ -130,6 +130,7 @@ interface BooleanFormFieldProps {
   small?: boolean;
   alignTop?: boolean;
   noLabel?: boolean;
+  disabled?: boolean;
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
@@ -141,15 +142,22 @@ export const AdminBooleanFormField = ({
   small,
   checked,
   alignTop,
+  disabled = false,
   onChange,
 }: BooleanFormFieldProps) => {
+  const [field, meta, helpers] = useField(name);
+
   return (
     <div>
       <label className={`flex text-sm`}>
-        <Field
-          name={name}
-          checked={checked}
+        <input
           type="checkbox"
+          {...field}
+          checked={Boolean(field.value)}
+          disabled={disabled}
+          onChange={(e) => {
+            helpers.setValue(e.target.checked);
+          }}
           className={`mr-3 bg-white px-5 w-3.5 h-3.5 ${
             alignTop ? "mt-1" : "my-auto"
           }`}

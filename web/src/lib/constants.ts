@@ -1,4 +1,10 @@
-export type AuthType = "disabled" | "basic" | "google_oauth" | "oidc" | "saml";
+export type AuthType =
+  | "disabled"
+  | "basic"
+  | "google_oauth"
+  | "oidc"
+  | "saml"
+  | "cloud";
 
 export const HOST_URL = process.env.WEB_DOMAIN || "http://127.0.0.1:3000";
 export const HEADER_HEIGHT = "h-16";
@@ -12,9 +18,7 @@ export const NEXT_PUBLIC_DO_NOT_USE_TOGGLE_OFF_DANSWER_POWERED =
   process.env.NEXT_PUBLIC_DO_NOT_USE_TOGGLE_OFF_DANSWER_POWERED?.toLowerCase() ===
   "true";
 
-export const NEXT_PUBLIC_NEW_CHAT_DIRECTS_TO_SAME_PERSONA =
-  process.env.NEXT_PUBLIC_NEW_CHAT_DIRECTS_TO_SAME_PERSONA?.toLowerCase() ===
-  "true";
+export const TENANT_ID_COOKIE_NAME = "onyx_tid";
 
 export const GMAIL_AUTH_IS_ADMIN_COOKIE_NAME = "gmail_auth_is_admin";
 
@@ -30,13 +34,17 @@ export const SIDEBAR_WIDTH = `w-[350px]`;
 export const LOGOUT_DISABLED =
   process.env.NEXT_PUBLIC_DISABLE_LOGOUT?.toLowerCase() === "true";
 
+// Default sidebar open is true if the environment variable is not set
 export const NEXT_PUBLIC_DEFAULT_SIDEBAR_OPEN =
-  process.env.NEXT_PUBLIC_DEFAULT_SIDEBAR_OPEN?.toLowerCase() === "true";
+  process.env.NEXT_PUBLIC_DEFAULT_SIDEBAR_OPEN?.toLowerCase() === "false"
+    ? false
+    : true;
 
 export const TOGGLED_CONNECTORS_COOKIE_NAME = "toggled_connectors";
 
 /* Enterprise-only settings */
-export const CUSTOM_REFRESH_URL = process.env.NEXT_PUBLIC_CUSTOM_REFRESH_URL;
+export const NEXT_PUBLIC_CUSTOM_REFRESH_URL =
+  process.env.NEXT_PUBLIC_CUSTOM_REFRESH_URL;
 
 // NOTE: this should ONLY be used on the server-side. If used client side,
 // it will not be accurate (will always be false).
@@ -53,5 +61,50 @@ export const CUSTOM_ANALYTICS_ENABLED = process.env.CUSTOM_ANALYTICS_SECRET_KEY
   ? true
   : false;
 
+export const GTM_ENABLED =
+  process.env.NEXT_PUBLIC_GTM_ENABLED?.toLowerCase() === "true";
+
 export const DISABLE_LLM_DOC_RELEVANCE =
   process.env.DISABLE_LLM_DOC_RELEVANCE?.toLowerCase() === "true";
+
+export const NEXT_PUBLIC_CLOUD_ENABLED =
+  process.env.NEXT_PUBLIC_CLOUD_ENABLED?.toLowerCase() === "true";
+
+export const REGISTRATION_URL =
+  process.env.INTERNAL_URL || "http://127.0.0.1:3001";
+
+export const SERVER_SIDE_ONLY__CLOUD_ENABLED =
+  process.env.NEXT_PUBLIC_CLOUD_ENABLED?.toLowerCase() === "true";
+
+export const NEXT_PUBLIC_FORGOT_PASSWORD_ENABLED =
+  process.env.NEXT_PUBLIC_FORGOT_PASSWORD_ENABLED?.toLowerCase() === "true" &&
+  !NEXT_PUBLIC_CLOUD_ENABLED;
+
+export const NEXT_PUBLIC_TEST_ENV =
+  process.env.NEXT_PUBLIC_TEST_ENV?.toLowerCase() === "true";
+
+export const NEXT_PUBLIC_ENABLE_CHROME_EXTENSION =
+  process.env.NEXT_PUBLIC_ENABLE_CHROME_EXTENSION?.toLowerCase() === "true";
+
+export const NEXT_PUBLIC_INCLUDE_ERROR_POPUP_SUPPORT_LINK =
+  process.env.NEXT_PUBLIC_INCLUDE_ERROR_POPUP_SUPPORT_LINK?.toLowerCase() ===
+  "true";
+
+export const NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY =
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+
+// Add support for custom URL protocols in markdown links
+export const ALLOWED_URL_PROTOCOLS = [
+  "http:",
+  "https:",
+  "mailto:",
+  "tel:",
+  "slack:",
+  "vscode:",
+  "file:",
+  "sms:",
+  "spotify:",
+  "zoommtg:",
+];
+
+export const MAX_CHARACTERS_PERSONA_DESCRIPTION = 5000000;

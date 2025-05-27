@@ -1,5 +1,3 @@
-import argparse
-import os
 import subprocess
 import threading
 
@@ -17,91 +15,170 @@ def monitor_process(process_name: str, process: subprocess.Popen) -> None:
             break
 
 
-def run_jobs(exclude_indexing: bool) -> None:
-    cmd_worker = [
+def run_jobs() -> None:
+    # command setup
+    cmd_worker_primary = [
         "celery",
         "-A",
-        "ee.danswer.background.celery.celery_app",
+        "onyx.background.celery.versioned_apps.primary",
         "worker",
         "--pool=threads",
         "--concurrency=6",
+        "--prefetch-multiplier=1",
         "--loglevel=INFO",
+        "--hostname=primary@%n",
         "-Q",
-        "celery,vespa_metadata_sync,connector_deletion",
+        "celery",
+    ]
+
+    cmd_worker_light = [
+        "celery",
+        "-A",
+        "onyx.background.celery.versioned_apps.light",
+        "worker",
+        "--pool=threads",
+        "--concurrency=16",
+        "--prefetch-multiplier=8",
+        "--loglevel=INFO",
+        "--hostname=light@%n",
+        "-Q",
+        "vespa_metadata_sync,connector_deletion,doc_permissions_upsert,checkpoint_cleanup",
+    ]
+
+    cmd_worker_heavy = [
+        "celery",
+        "-A",
+        "onyx.background.celery.versioned_apps.heavy",
+        "worker",
+        "--pool=threads",
+        "--concurrency=6",
+        "--prefetch-multiplier=1",
+        "--loglevel=INFO",
+        "--hostname=heavy@%n",
+        "-Q",
+        "connector_pruning,connector_doc_permissions_sync,connector_external_group_sync,csv_generation",
+    ]
+
+    cmd_worker_indexing = [
+        "celery",
+        "-A",
+        "onyx.background.celery.versioned_apps.indexing",
+        "worker",
+        "--pool=threads",
+        "--concurrency=1",
+        "--prefetch-multiplier=1",
+        "--loglevel=INFO",
+        "--hostname=indexing@%n",
+        "--queues=connector_indexing",
+    ]
+
+    cmd_worker_user_files_indexing = [
+        "celery",
+        "-A",
+        "onyx.background.celery.versioned_apps.indexing",
+        "worker",
+        "--pool=threads",
+        "--concurrency=1",
+        "--prefetch-multiplier=1",
+        "--loglevel=INFO",
+        "--hostname=user_files_indexing@%n",
+        "--queues=user_files_indexing",
+    ]
+
+    cmd_worker_monitoring = [
+        "celery",
+        "-A",
+        "onyx.background.celery.versioned_apps.monitoring",
+        "worker",
+        "--pool=threads",
+        "--concurrency=1",
+        "--prefetch-multiplier=1",
+        "--loglevel=INFO",
+        "--hostname=monitoring@%n",
+        "--queues=monitoring",
     ]
 
     cmd_beat = [
         "celery",
         "-A",
-        "ee.danswer.background.celery.celery_app",
+        "onyx.background.celery.versioned_apps.beat",
         "beat",
         "--loglevel=INFO",
     ]
 
-    worker_process = subprocess.Popen(
-        cmd_worker, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    # spawn processes
+    worker_primary_process = subprocess.Popen(
+        cmd_worker_primary, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
+
+    worker_light_process = subprocess.Popen(
+        cmd_worker_light, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
+
+    worker_heavy_process = subprocess.Popen(
+        cmd_worker_heavy, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
+
+    worker_indexing_process = subprocess.Popen(
+        cmd_worker_indexing, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
+
+    worker_user_files_indexing_process = subprocess.Popen(
+        cmd_worker_user_files_indexing,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    worker_monitoring_process = subprocess.Popen(
+        cmd_worker_monitoring,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
     beat_process = subprocess.Popen(
         cmd_beat, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
 
-    worker_thread = threading.Thread(
-        target=monitor_process, args=("WORKER", worker_process)
+    # monitor threads
+    worker_primary_thread = threading.Thread(
+        target=monitor_process, args=("PRIMARY", worker_primary_process)
+    )
+    worker_light_thread = threading.Thread(
+        target=monitor_process, args=("LIGHT", worker_light_process)
+    )
+    worker_heavy_thread = threading.Thread(
+        target=monitor_process, args=("HEAVY", worker_heavy_process)
+    )
+    worker_indexing_thread = threading.Thread(
+        target=monitor_process, args=("INDEX", worker_indexing_process)
+    )
+    worker_user_files_indexing_thread = threading.Thread(
+        target=monitor_process,
+        args=("USER_FILES_INDEX", worker_user_files_indexing_process),
+    )
+    worker_monitoring_thread = threading.Thread(
+        target=monitor_process, args=("MONITORING", worker_monitoring_process)
     )
     beat_thread = threading.Thread(target=monitor_process, args=("BEAT", beat_process))
 
-    worker_thread.start()
+    worker_primary_thread.start()
+    worker_light_thread.start()
+    worker_heavy_thread.start()
+    worker_indexing_thread.start()
+    worker_user_files_indexing_thread.start()
+    worker_monitoring_thread.start()
     beat_thread.start()
 
-    if not exclude_indexing:
-        update_env = os.environ.copy()
-        update_env["PYTHONPATH"] = "."
-        cmd_indexing = ["python", "danswer/background/update.py"]
-
-        indexing_process = subprocess.Popen(
-            cmd_indexing,
-            env=update_env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-
-        indexing_thread = threading.Thread(
-            target=monitor_process, args=("INDEXING", indexing_process)
-        )
-
-        indexing_thread.start()
-        indexing_thread.join()
-    try:
-        update_env = os.environ.copy()
-        update_env["PYTHONPATH"] = "."
-        cmd_perm_sync = ["python", "ee/danswer/background/permission_sync.py"]
-
-        indexing_process = subprocess.Popen(
-            cmd_perm_sync,
-            env=update_env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-
-        perm_sync_thread = threading.Thread(
-            target=monitor_process, args=("INDEXING", indexing_process)
-        )
-        perm_sync_thread.start()
-        perm_sync_thread.join()
-    except Exception:
-        pass
-
-    worker_thread.join()
+    worker_primary_thread.join()
+    worker_light_thread.join()
+    worker_heavy_thread.join()
+    worker_indexing_thread.join()
+    worker_user_files_indexing_thread.join()
+    worker_monitoring_thread.join()
     beat_thread.join()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run background jobs.")
-    parser.add_argument(
-        "--no-indexing", action="store_true", help="Do not run indexing process"
-    )
-    args = parser.parse_args()
-
-    run_jobs(args.no_indexing)
+    run_jobs()

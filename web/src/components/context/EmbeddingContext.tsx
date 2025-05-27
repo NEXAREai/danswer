@@ -6,7 +6,6 @@ import React, {
   useEffect,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ValidSources } from "@/lib/types";
 
 interface EmbeddingFormContextType {
   formStep: number;
@@ -19,7 +18,7 @@ interface EmbeddingFormContextType {
   allowAdvanced: boolean;
   setAllowAdvanced: React.Dispatch<React.SetStateAction<boolean>>;
   allowCreate: boolean;
-  setAlowCreate: React.Dispatch<React.SetStateAction<boolean>>;
+  setAllowCreate: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const EmbeddingFormContext = createContext<
@@ -34,12 +33,12 @@ export const EmbeddingFormProvider: React.FC<{
   const pathname = usePathname();
 
   // Initialize formStep based on the URL parameter
-  const initialStep = parseInt(searchParams.get("step") || "0", 10);
+  const initialStep = parseInt(searchParams?.get("step") || "0", 10);
   const [formStep, setFormStep] = useState(initialStep);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
 
   const [allowAdvanced, setAllowAdvanced] = useState(false);
-  const [allowCreate, setAlowCreate] = useState(false);
+  const [allowCreate, setAllowCreate] = useState(false);
 
   const nextFormStep = (values = "") => {
     setFormStep((prevStep) => prevStep + 1);
@@ -56,15 +55,23 @@ export const EmbeddingFormProvider: React.FC<{
 
   useEffect(() => {
     // Update URL when formStep changes
-    const updatedSearchParams = new URLSearchParams(searchParams.toString());
+    const updatedSearchParams = new URLSearchParams(
+      searchParams?.toString() || ""
+    );
+    const existingStep = updatedSearchParams?.get("step");
     updatedSearchParams.set("step", formStep.toString());
     const newUrl = `${pathname}?${updatedSearchParams.toString()}`;
-    router.push(newUrl);
+
+    if (!existingStep) {
+      router.replace(newUrl);
+    } else if (newUrl !== pathname) {
+      router.push(newUrl);
+    }
   }, [formStep, router, pathname, searchParams]);
 
   // Update formStep when URL changes
   useEffect(() => {
-    const stepFromUrl = parseInt(searchParams.get("step") || "0", 10);
+    const stepFromUrl = parseInt(searchParams?.get("step") || "0", 10);
     if (stepFromUrl !== formStep) {
       setFormStep(stepFromUrl);
     }
@@ -82,7 +89,7 @@ export const EmbeddingFormProvider: React.FC<{
     allowAdvanced,
     setAllowAdvanced,
     allowCreate,
-    setAlowCreate,
+    setAllowCreate: setAllowCreate,
   };
 
   return (

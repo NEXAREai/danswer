@@ -1,9 +1,14 @@
 from uuid import uuid4
 
 import requests
+from sqlalchemy import and_
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from danswer.configs.constants import DocumentSource
-from danswer.db.enums import AccessType
+from onyx.configs.constants import DocumentSource
+from onyx.db.enums import AccessType
+from onyx.db.models import ConnectorCredentialPair
+from onyx.db.models import DocumentByConnectorCredentialPair
 from tests.integration.common_utils.constants import API_SERVER_URL
 from tests.integration.common_utils.constants import GENERAL_HEADERS
 from tests.integration.common_utils.constants import NUM_DOCS
@@ -21,8 +26,9 @@ def _verify_document_permissions(
     group_names: list[str] | None = None,
     doc_creating_user: DATestUser | None = None,
 ) -> None:
-    acl_keys = set(retrieved_doc["access_control_list"].keys())
+    acl_keys = set(retrieved_doc.get("access_control_list", {}).keys())
     print(f"ACL keys: {acl_keys}")
+
     if cc_pair.access_type == AccessType.PUBLIC:
         if "PUBLIC" not in acl_keys:
             raise ValueError(
@@ -42,8 +48,9 @@ def _verify_document_permissions(
         found_group_keys = {key for key in acl_keys if key.startswith("group:")}
         if found_group_keys != expected_group_keys:
             raise ValueError(
-                f"Document {retrieved_doc['document_id']} has incorrect group ACL keys. Found: {found_group_keys}, \n"
-                f"Expected: {expected_group_keys}"
+                f"Document {retrieved_doc['document_id']} has incorrect group ACL keys. "
+                f"Expected: {expected_group_keys}  Found: {found_group_keys}\n"
+                f"All ACL keys: {acl_keys}"
             )
 
     if doc_set_names is not None:
@@ -99,13 +106,14 @@ class DocumentManager:
             document = _generate_dummy_document(document_id, cc_pair.id)
             documents.append(document)
             response = requests.post(
-                f"{API_SERVER_URL}/danswer-api/ingestion",
+                f"{API_SERVER_URL}/onyx-api/ingestion",
                 json=document,
                 headers=api_key.headers if api_key else GENERAL_HEADERS,
             )
             response.raise_for_status()
 
-        print("Seeding completed successfully.")
+        api_key_id = api_key.api_key_id if api_key else ""
+        print(f"Seeding docs for api_key_id={api_key_id} completed successfully.")
         return [
             SimpleTestDocument(
                 id=document["document"]["id"],
@@ -127,13 +135,14 @@ class DocumentManager:
         # Create and ingest some documents
         document: dict = _generate_dummy_document(document_id, cc_pair.id, content)
         response = requests.post(
-            f"{API_SERVER_URL}/danswer-api/ingestion",
+            f"{API_SERVER_URL}/onyx-api/ingestion",
             json=document,
             headers=api_key.headers if api_key else GENERAL_HEADERS,
         )
         response.raise_for_status()
 
-        print("Seeding completed successfully.")
+        api_key_id = api_key.api_key_id if api_key else ""
+        print(f"Seeding doc for api_key_id={api_key_id} completed successfully.")
 
         return SimpleTestDocument(
             id=document["document"]["id"],
@@ -153,11 +162,17 @@ class DocumentManager:
     ) -> None:
         doc_ids = [document.id for document in cc_pair.documents]
         retrieved_docs_dict = vespa_client.get_documents_by_id(doc_ids)["documents"]
+
         retrieved_docs = {
             doc["fields"]["document_id"]: doc["fields"] for doc in retrieved_docs_dict
         }
+
+        # NOTE(rkuo): too much log spam
         # Left this here for debugging purposes.
         # import json
+
+        # print("DEBUGGING DOCUMENTS")
+        # print(retrieved_docs)
         # for doc in retrieved_docs.values():
         #     printable_doc = doc.copy()
         #     print(printable_doc.keys())
@@ -169,6 +184,9 @@ class DocumentManager:
             retrieved_doc = retrieved_docs.get(document.id)
             if not retrieved_doc:
                 if not verify_deleted:
+                    print(f"Document not found: {document.id}")
+                    print(retrieved_docs.keys())
+                    print(retrieved_docs.values())
                     raise ValueError(f"Document not found: {document.id}")
                 continue
             if verify_deleted:
@@ -182,3 +200,44 @@ class DocumentManager:
                 group_names,
                 doc_creating_user,
             )
+
+    @staticmethod
+    def fetch_documents_for_cc_pair(
+        cc_pair_id: int,
+        db_session: Session,
+        vespa_client: vespa_fixture,
+    ) -> list[SimpleTestDocument]:
+        stmt = (
+            select(DocumentByConnectorCredentialPair)
+            .join(
+                ConnectorCredentialPair,
+                and_(
+                    DocumentByConnectorCredentialPair.connector_id
+                    == ConnectorCredentialPair.connector_id,
+                    DocumentByConnectorCredentialPair.credential_id
+                    == ConnectorCredentialPair.credential_id,
+                ),
+            )
+            .where(ConnectorCredentialPair.id == cc_pair_id)
+        )
+        documents = db_session.execute(stmt).scalars().all()
+        if not documents:
+            return []
+
+        doc_ids = [document.id for document in documents]
+        retrieved_docs_dict = vespa_client.get_documents_by_id(doc_ids)["documents"]
+
+        final_docs: list[SimpleTestDocument] = []
+        # NOTE: they are really chunks, but we're assuming that for these tests
+        # we only have one chunk per document for now
+        for doc_dict in retrieved_docs_dict:
+            doc_id = doc_dict["fields"]["document_id"]
+            doc_content = doc_dict["fields"]["content"]
+            image_file_name = doc_dict["fields"].get("image_file_name", None)
+            final_docs.append(
+                SimpleTestDocument(
+                    id=doc_id, content=doc_content, image_file_name=image_file_name
+                )
+            )
+
+        return final_docs

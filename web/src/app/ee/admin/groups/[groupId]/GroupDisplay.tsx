@@ -1,41 +1,54 @@
 "use client";
 
 import { usePopup } from "@/components/admin/connectors/Popup";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { ConnectorTitle } from "@/components/admin/connectors/ConnectorTitle";
 import { AddMemberForm } from "./AddMemberForm";
 import { updateUserGroup, updateCuratorStatus } from "./lib";
 import { LoadingAnimation } from "@/components/Loading";
 import {
-  ConnectorIndexingStatus,
   User,
   UserGroup,
   UserRole,
+  USER_ROLE_LABELS,
+  ConnectorStatus,
 } from "@/lib/types";
 import { AddConnectorForm } from "./AddConnectorForm";
+import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import Text from "@/components/ui/text";
 import {
   Table,
-  TableHead,
-  TableRow,
-  TableHeaderCell,
   TableBody,
   TableCell,
-  Divider,
-  Button,
-  Text,
-  Select,
-  SelectItem,
-} from "@tremor/react";
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 import { DeleteButton } from "@/components/DeleteButton";
 import { Bubble } from "@/components/Bubble";
 import { BookmarkIcon, RobotIcon } from "@/components/icons/icons";
 import { AddTokenRateLimitForm } from "./AddTokenRateLimitForm";
 import { GenericTokenRateLimitTable } from "@/app/admin/token-rate-limits/TokenRateLimitTables";
 import { useUser } from "@/components/user/UserProvider";
+import { GenericConfirmModal } from "@/components/modals/GenericConfirmModal";
 
 interface GroupDisplayProps {
   users: User[];
-  ccPairs: ConnectorIndexingStatus<any, any>[];
+  ccPairs: ConnectorStatus<any, any>[];
   userGroup: UserGroup;
   refreshUserGroup: () => void;
 }
@@ -62,8 +75,13 @@ const UserRoleDropdown = ({
     return user.role;
   });
   const [isSettingRole, setIsSettingRole] = useState(false);
+  const [showDemoteConfirm, setShowDemoteConfirm] = useState(false);
+  const [pendingRoleChange, setPendingRoleChange] = useState<string | null>(
+    null
+  );
+  const { user: currentUser } = useUser();
 
-  const handleChange = async (value: string) => {
+  const applyRoleChange = async (value: string) => {
     if (value === localRole) return;
     if (value === UserRole.BASIC || value === UserRole.CURATOR) {
       setIsSettingRole(true);
@@ -89,25 +107,61 @@ const UserRoleDropdown = ({
     }
   };
 
-  const isEditable =
-    (user.role === UserRole.BASIC || user.role === UserRole.CURATOR) && isAdmin;
+  const handleChange = (value: string) => {
+    if (value === UserRole.BASIC && user.id === currentUser?.id) {
+      setPendingRoleChange(value);
+      setShowDemoteConfirm(true);
+    } else {
+      applyRoleChange(value);
+    }
+  };
 
-  if (isEditable) {
-    return (
-      <div className="w-40">
-        <Select
-          value={localRole}
-          onValueChange={handleChange}
-          disabled={isSettingRole}
-        >
-          <SelectItem value={UserRole.BASIC}>Basic</SelectItem>
-          <SelectItem value={UserRole.CURATOR}>Curator</SelectItem>
-        </Select>
-      </div>
-    );
-  } else {
-    return <div>{localRole}</div>;
-  }
+  const isEditable =
+    user.role === UserRole.BASIC || user.role === UserRole.CURATOR;
+
+  return (
+    <>
+      {/* Confirmation modal - only shown when users try to demote themselves */}
+      {showDemoteConfirm && pendingRoleChange && (
+        <GenericConfirmModal
+          title="Remove Yourself as a Curator for this Group?"
+          message="Are you sure you want to change your role to Basic? This will remove your ability to curate this group."
+          confirmText="Yes, set me to Basic"
+          onClose={() => {
+            // Cancel the role change if user dismisses modal
+            setShowDemoteConfirm(false);
+            setPendingRoleChange(null);
+          }}
+          onConfirm={() => {
+            // Apply the role change if user confirms
+            setShowDemoteConfirm(false);
+            applyRoleChange(pendingRoleChange);
+            setPendingRoleChange(null);
+          }}
+        />
+      )}
+
+      {isEditable ? (
+        <div className="w-40">
+          <Select
+            value={localRole}
+            onValueChange={handleChange}
+            disabled={isSettingRole}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select role" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={UserRole.BASIC}>Basic</SelectItem>
+              <SelectItem value={UserRole.CURATOR}>Curator</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      ) : (
+        <div>{USER_ROLE_LABELS[localRole]}</div>
+      )}
+    </>
+  );
 };
 
 export const GroupDisplay = ({
@@ -121,10 +175,7 @@ export const GroupDisplay = ({
   const [addConnectorFormVisible, setAddConnectorFormVisible] = useState(false);
   const [addRateLimitFormVisible, setAddRateLimitFormVisible] = useState(false);
 
-  const { isLoadingUser, isAdmin } = useUser();
-  if (isLoadingUser) {
-    return <></>;
-  }
+  const { isAdmin } = useUser();
 
   const handlePopup = (message: string, type: "success" | "error") => {
     setPopup({ message, type });
@@ -150,7 +201,7 @@ export const GroupDisplay = ({
         )}
       </div>
 
-      <Divider />
+      <Separator />
 
       <div className="flex w-full">
         <h2 className="text-xl font-bold">Users</h2>
@@ -160,15 +211,15 @@ export const GroupDisplay = ({
         {userGroup.users.length > 0 ? (
           <>
             <Table className="overflow-visible">
-              <TableHead>
+              <TableHeader>
                 <TableRow>
-                  <TableHeaderCell>Email</TableHeaderCell>
-                  <TableHeaderCell>Role</TableHeaderCell>
-                  <TableHeaderCell className="flex w-full">
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead className="flex w-full">
                     <div className="ml-auto">Remove User</div>
-                  </TableHeaderCell>
+                  </TableHead>
                 </TableRow>
-              </TableHead>
+              </TableHeader>
               <TableBody>
                 {userGroup.users.map((groupMember) => {
                   return (
@@ -244,16 +295,29 @@ export const GroupDisplay = ({
         )}
       </div>
 
-      <Button
-        className="mt-3"
-        size="xs"
-        color="green"
-        onClick={() => setAddMemberFormVisible(true)}
-        disabled={!userGroup.is_up_to_date}
-      >
-        Add Users
-      </Button>
-
+      <TooltipProvider>
+        <Tooltip delayDuration={0}>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              className={userGroup.is_up_to_date ? "" : "opacity-50"}
+              variant="submit"
+              onClick={() => {
+                if (userGroup.is_up_to_date) {
+                  setAddMemberFormVisible(true);
+                }
+              }}
+            >
+              Add Users
+            </Button>
+          </TooltipTrigger>
+          {!userGroup.is_up_to_date && (
+            <TooltipContent>
+              <p>Cannot update group while sync is occurring</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </TooltipProvider>
       {addMemberFormVisible && (
         <AddMemberForm
           users={users}
@@ -266,21 +330,21 @@ export const GroupDisplay = ({
         />
       )}
 
-      <Divider />
+      <Separator />
 
       <h2 className="text-xl font-bold mt-8">Connectors</h2>
       <div className="mt-2">
         {userGroup.cc_pairs.length > 0 ? (
           <>
             <Table className="overflow-visible">
-              <TableHead>
+              <TableHeader>
                 <TableRow>
-                  <TableHeaderCell>Connector</TableHeaderCell>
-                  <TableHeaderCell className="flex w-full">
+                  <TableHead>Connector</TableHead>
+                  <TableHead className="flex w-full">
                     <div className="ml-auto">Remove Connector</div>
-                  </TableHeaderCell>
+                  </TableHead>
                 </TableRow>
-              </TableHead>
+              </TableHeader>
               <TableBody>
                 {userGroup.cc_pairs.map((ccPair) => {
                   return (
@@ -343,15 +407,29 @@ export const GroupDisplay = ({
         )}
       </div>
 
-      <Button
-        className="mt-3"
-        onClick={() => setAddConnectorFormVisible(true)}
-        size="xs"
-        color="green"
-        disabled={!userGroup.is_up_to_date}
-      >
-        Add Connectors
-      </Button>
+      <TooltipProvider>
+        <Tooltip delayDuration={0}>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              className={userGroup.is_up_to_date ? "" : "opacity-50"}
+              variant="submit"
+              onClick={() => {
+                if (userGroup.is_up_to_date) {
+                  setAddConnectorFormVisible(true);
+                }
+              }}
+            >
+              Add Connectors
+            </Button>
+          </TooltipTrigger>
+          {!userGroup.is_up_to_date && (
+            <TooltipContent>
+              <p>Cannot update group while sync is occurring</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </TooltipProvider>
 
       {addConnectorFormVisible && (
         <AddConnectorForm
@@ -365,7 +443,7 @@ export const GroupDisplay = ({
         />
       )}
 
-      <Divider />
+      <Separator />
 
       <h2 className="text-xl font-bold mt-8 mb-2">Document Sets</h2>
 
@@ -390,7 +468,7 @@ export const GroupDisplay = ({
         )}
       </div>
 
-      <Divider />
+      <Separator />
 
       <h2 className="text-xl font-bold mt-8 mb-2">Assistants</h2>
 
@@ -415,7 +493,7 @@ export const GroupDisplay = ({
         )}
       </div>
 
-      <Divider />
+      <Separator />
 
       <h2 className="text-xl font-bold mt-8 mb-2">Token Rate Limits</h2>
 
@@ -434,8 +512,8 @@ export const GroupDisplay = ({
 
       {isAdmin && (
         <Button
-          color="green"
-          size="xs"
+          variant="submit"
+          size="sm"
           className="mt-3"
           onClick={() => setAddRateLimitFormVisible(true)}
         >

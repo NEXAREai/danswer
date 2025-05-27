@@ -1,7 +1,8 @@
 import { AdminPageTitle } from "@/components/admin/Title";
 import { CUSTOM_ANALYTICS_ENABLED } from "@/lib/constants";
-import { Callout, Text } from "@tremor/react";
+import { Callout } from "@/components/ui/callout";
 import { FiBarChart2 } from "react-icons/fi";
+import Text from "@/components/ui/text";
 import { CustomAnalyticsUpdateForm } from "./CustomAnalyticsUpdateForm";
 
 function Main() {
@@ -9,9 +10,9 @@ function Main() {
     return (
       <div>
         <div className="mt-4">
-          <Callout title="Custom Analytics is not enabled." color="red">
+          <Callout type="danger" title="Custom Analytics is not enabled.">
             To set up custom analytics scripts, please work with the team who
-            setup Danswer in your organization to set the{" "}
+            setup Onyx in your team to set the{" "}
             <i>CUSTOM_ANALYTICS_SECRET_KEY</i> environment variable.
           </Callout>
         </div>
@@ -22,9 +23,9 @@ function Main() {
   return (
     <div>
       <Text className="mb-8">
-        This allows you to bring your own analytics tool to Danswer! Copy the
-        Web snippet from your analytics provider into the box below, and
-        we&apos;ll start sending usage events.
+        This allows you to bring your own analytics tool to Onyx! Copy the Web
+        snippet from your analytics provider into the box below, and we&apos;ll
+        start sending usage events.
       </Text>
 
       <CustomAnalyticsUpdateForm />

@@ -13,9 +13,6 @@ import {
 } from "@/lib/types";
 import { ChatSession } from "@/app/chat/interfaces";
 import { Persona } from "@/app/admin/assistants/interfaces";
-import { InputPrompt } from "@/app/admin/prompt-library/interfaces";
-import { FullEmbeddingModelResponse } from "@/components/embedding/interfaces";
-import { Settings } from "@/app/admin/settings/interfaces";
 import { fetchLLMProvidersSS } from "@/lib/llm/fetchLLMs";
 import { LLMProviderDescriptor } from "@/app/admin/configuration/llm/interfaces";
 import { Folder } from "@/app/chat/folders/interfaces";
@@ -45,7 +42,6 @@ interface FetchChatDataResult {
   finalDocumentSidebarInitialWidth?: number;
   shouldShowWelcomeModal?: boolean;
   shouldDisplaySourcesIncompleteModal?: boolean;
-  userInputPrompts?: InputPrompt[];
 }
 
 type FetchOption =
@@ -56,27 +52,26 @@ type FetchOption =
   | "assistants"
   | "tags"
   | "llmProviders"
-  | "folders"
-  | "userInputPrompts";
+  | "folders";
 
-/* 
-NOTE: currently unused, but leaving here for future use. 
+/*
+NOTE: currently unused, but leaving here for future use.
 */
 export async function fetchSomeChatData(
   searchParams: { [key: string]: string },
   fetchOptions: FetchOption[] = []
 ): Promise<FetchChatDataResult | { redirect: string }> {
+  const requestCookies = await cookies();
   const tasks: Promise<any>[] = [];
   const taskMap: Record<FetchOption, () => Promise<any>> = {
     user: getCurrentUserSS,
     chatSessions: () => fetchSS("/chat/get-user-chat-sessions"),
-    ccPairs: () => fetchSS("/manage/indexing-status"),
+    ccPairs: () => fetchSS("/manage/connector-status"),
     documentSets: () => fetchSS("/manage/document-set"),
     assistants: fetchAssistantsSS,
     tags: () => fetchSS("/query/valid-tags"),
     llmProviders: fetchLLMProvidersSS,
     folders: () => fetchSS("/folder"),
-    userInputPrompts: () => fetchSS("/input_prompt?include_public=true"),
   };
 
   // Always fetch auth type metadata
@@ -95,6 +90,7 @@ export async function fetchSomeChatData(
   const authDisabled = authTypeMetadata?.authType === "disabled";
 
   let user: User | null = null;
+
   if (fetchOptions.includes("user")) {
     user = results.shift();
     if (!authDisabled && !user) {
@@ -152,11 +148,6 @@ export async function fetchSomeChatData(
           ? ((await result.json()) as { folders: Folder[] }).folders
           : [];
         break;
-      case "userInputPrompts":
-        result.userInputPrompts = result?.ok
-          ? ((await result.json()) as InputPrompt[])
-          : [];
-        break;
     }
   }
 
@@ -178,10 +169,15 @@ export async function fetchSomeChatData(
       );
     }
 
-    const hasOpenAIProvider =
-      result.llmProviders &&
-      result.llmProviders.some((provider) => provider.provider === "openai");
-    if (!hasOpenAIProvider) {
+    const hasImageCompatibleModel = result.llmProviders?.some(
+      (provider) =>
+        provider.provider === "openai" ||
+        provider.model_configurations.some(
+          (modelConfiguration) => modelConfiguration.supports_image_input
+        )
+    );
+
+    if (!hasImageCompatibleModel) {
       result.assistants = result.assistants.filter(
         (assistant) =>
           !assistant.tools.some(
@@ -192,7 +188,7 @@ export async function fetchSomeChatData(
   }
 
   if (fetchOptions.includes("folders")) {
-    const openedFoldersCookie = cookies().get("openedFolders");
+    const openedFoldersCookie = requestCookies.get("openedFolders");
     result.openedFolders = openedFoldersCookie
       ? JSON.parse(openedFoldersCookie.value)
       : {};
@@ -203,10 +199,10 @@ export async function fetchSomeChatData(
     ? parseInt(defaultAssistantIdRaw)
     : undefined;
 
-  const documentSidebarCookieInitialWidth = cookies().get(
+  const documentSidebarCookieInitialWidth = requestCookies.get(
     DOCUMENT_SIDEBAR_WIDTH_COOKIE_NAME
   );
-  const sidebarToggled = cookies().get(SIDEBAR_TOGGLED_COOKIE_NAME);
+  const sidebarToggled = requestCookies.get(SIDEBAR_TOGGLED_COOKIE_NAME);
 
   result.toggleSidebar = sidebarToggled
     ? sidebarToggled.value.toLowerCase() === "true"
@@ -219,16 +215,14 @@ export async function fetchSomeChatData(
   if (fetchOptions.includes("ccPairs") && result.ccPairs) {
     const hasAnyConnectors = result.ccPairs.length > 0;
     result.shouldShowWelcomeModal =
-      !hasCompletedWelcomeFlowSS() &&
+      !hasCompletedWelcomeFlowSS(requestCookies) &&
       !hasAnyConnectors &&
       (!user || user.role === "admin");
 
     result.shouldDisplaySourcesIncompleteModal =
       hasAnyConnectors &&
       !result.shouldShowWelcomeModal &&
-      !result.ccPairs.some(
-        (ccPair) => ccPair.has_successful_run && ccPair.docs_indexed > 0
-      ) &&
+      !result.ccPairs.some((ccPair) => ccPair.has_successful_run) &&
       (!user || user.role === "admin");
   }
 

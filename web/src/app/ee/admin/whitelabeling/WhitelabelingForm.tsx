@@ -12,10 +12,12 @@ import {
   SubLabel,
   TextFormField,
 } from "@/components/admin/connectors/Field";
-import { Button, Divider, Text } from "@tremor/react";
+import { Button } from "@/components/ui/button";
+import Text from "@/components/ui/text";
 import { ImageUpload } from "./ImageUpload";
 import { AdvancedOptionsToggle } from "@/components/AdvancedOptionsToggle";
 import Link from "next/link";
+import { Separator } from "@/components/ui/separator";
 
 export function WhitelabelingForm() {
   const router = useRouter();
@@ -53,6 +55,7 @@ export function WhitelabelingForm() {
     <div>
       <Formik
         initialValues={{
+          auto_scroll: settings?.settings?.auto_scroll || false,
           application_name: enterpriseSettings?.application_name || null,
           use_custom_logo: enterpriseSettings?.use_custom_logo || false,
           use_custom_logotype: enterpriseSettings?.use_custom_logotype || false,
@@ -69,7 +72,11 @@ export function WhitelabelingForm() {
             enterpriseSettings?.enable_consent_screen || false,
         }}
         validationSchema={Yup.object().shape({
-          application_name: Yup.string().nullable(),
+          auto_scroll: Yup.boolean().nullable(),
+          application_name: Yup.string()
+            .trim()
+            .min(1, "Application name cannot be empty")
+            .nullable(),
           use_custom_logo: Yup.boolean().required(),
           use_custom_logotype: Yup.boolean().required(),
           custom_header_content: Yup.string().nullable(),
@@ -133,57 +140,58 @@ export function WhitelabelingForm() {
             <TextFormField
               label="Application Name"
               name="application_name"
-              subtext={`The custom name you are giving Danswer for your organization. This will replace 'Danswer' everywhere in the UI.`}
-              placeholder="Custom name which will replace 'Danswer'"
+              subtext={`The custom name you are giving Onyx for your team. This will replace 'Onyx' everywhere in the UI.`}
+              placeholder="Custom name which will replace 'Onyx'"
               disabled={isSubmitting}
             />
+            <div>
+              <Label className="mt-4">Custom Logo</Label>
 
-            <Label className="mt-4">Custom Logo</Label>
+              {values.use_custom_logo ? (
+                <div className="mt-3">
+                  <SubLabel>Current Custom Logo: </SubLabel>
+                  <img
+                    src={"/api/enterprise-settings/logo?u=" + Date.now()}
+                    alt="logo"
+                    style={{ objectFit: "contain" }}
+                    className="w-32 h-32 mb-10 mt-4"
+                  />
 
-            {values.use_custom_logo ? (
-              <div className="mt-3">
-                <SubLabel>Current Custom Logo: </SubLabel>
-                <img
-                  src={"/api/enterprise-settings/logo?u=" + Date.now()}
-                  alt="logo"
-                  style={{ objectFit: "contain" }}
-                  className="w-32 h-32 mb-10 mt-4"
-                />
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    type="button"
+                    className="mb-8"
+                    onClick={async () => {
+                      const valuesWithoutLogo = {
+                        ...values,
+                        use_custom_logo: false,
+                      };
+                      await updateEnterpriseSettings(valuesWithoutLogo);
+                      setValues(valuesWithoutLogo);
+                    }}
+                  >
+                    Delete
+                  </Button>
 
-                <Button
-                  color="red"
-                  size="xs"
-                  type="button"
-                  className="mb-8"
-                  onClick={async () => {
-                    const valuesWithoutLogo = {
-                      ...values,
-                      use_custom_logo: false,
-                    };
-                    await updateEnterpriseSettings(valuesWithoutLogo);
-                    setValues(valuesWithoutLogo);
-                  }}
-                >
-                  Delete
-                </Button>
-
+                  <SubLabel>
+                    Override the current custom logo by uploading a new image
+                    below and clicking the Update button.
+                  </SubLabel>
+                </div>
+              ) : (
                 <SubLabel>
-                  Override the current custom logo by uploading a new image
-                  below and clicking the Update button.
+                  Specify your own logo to replace the standard Onyx logo.
                 </SubLabel>
-              </div>
-            ) : (
-              <SubLabel>
-                Specify your own logo to replace the standard Danswer logo.
-              </SubLabel>
-            )}
+              )}
 
-            <ImageUpload
-              selectedFile={selectedLogo}
-              setSelectedFile={setSelectedLogo}
-            />
+              <ImageUpload
+                selectedFile={selectedLogo}
+                setSelectedFile={setSelectedLogo}
+              />
+            </div>
 
-            <Divider />
+            <Separator />
 
             <AdvancedOptionsToggle
               showAdvancedOptions={showAdvancedOptions}
@@ -195,12 +203,12 @@ export function WhitelabelingForm() {
                 <Text>
                   Read{" "}
                   <Link
-                    href={"https://docs.danswer.dev/enterprise_edition/theming"}
+                    href={"https://docs.onyx.app/enterprise_edition/theming"}
                     className="text-link cursor-pointer"
                   >
                     the docs
                   </Link>{" "}
-                  to see whitelabelling examples in action.
+                  to see whitelabeling examples in action.
                 </Text>
 
                 <TextFormField
@@ -217,7 +225,7 @@ export function WhitelabelingForm() {
                   subtext="If enabled, the chat header will be displayed on two lines instead of one."
                 />
 
-                <Divider />
+                <Separator />
 
                 <TextFormField
                   label={
@@ -229,7 +237,9 @@ export function WhitelabelingForm() {
                   subtext={
                     values.enable_consent_screen
                       ? `The title for the consent screen that will be displayed for each user on their initial visit to the application. If left blank, title will default to "Terms of Use".`
-                      : `The title for the popup that will be displayed for each user on their initial visit to the application. If left blank AND Custom Popup Content is specified, will use "Welcome to ${values.application_name || "Danswer"}!".`
+                      : `The title for the popup that will be displayed for each user on their initial visit to the application. If left blank AND Custom Popup Content is specified, will use "Welcome to ${
+                          values.application_name || "Onyx"
+                        }!".`
                   }
                   placeholder={
                     values.enable_consent_screen
@@ -292,8 +302,8 @@ export function WhitelabelingForm() {
                       />
 
                       <Button
-                        color="red"
-                        size="xs"
+                        variant="destructive"
+                        size="sm"
                         type="button"
                         className="mb-8"
                         onClick={async () => {

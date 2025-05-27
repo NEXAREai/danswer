@@ -5,6 +5,7 @@ Revises: c5b692fa265c
 Create Date: 2024-08-18 19:06:47.291491
 
 """
+
 import json
 from alembic import op
 import sqlalchemy as sa
@@ -20,7 +21,7 @@ depends_on: None = None
 def upgrade() -> None:
     conn = op.get_bind()
     existing_ids_and_chosen_assistants = conn.execute(
-        sa.text("select id, chosen_assistants from public.user")
+        sa.text('select id, chosen_assistants from "user"')
     )
     op.drop_column(
         "user",
@@ -37,7 +38,7 @@ def upgrade() -> None:
     for id, chosen_assistants in existing_ids_and_chosen_assistants:
         conn.execute(
             sa.text(
-                "update public.user set chosen_assistants = :chosen_assistants where id = :id"
+                'update "user" set chosen_assistants = :chosen_assistants where id = :id'
             ),
             {"chosen_assistants": json.dumps(chosen_assistants), "id": id},
         )
@@ -46,7 +47,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     conn = op.get_bind()
     existing_ids_and_chosen_assistants = conn.execute(
-        sa.text("select id, chosen_assistants from public.user")
+        sa.text('select id, chosen_assistants from "user"')
     )
     op.drop_column(
         "user",
@@ -59,7 +60,7 @@ def downgrade() -> None:
     for id, chosen_assistants in existing_ids_and_chosen_assistants:
         conn.execute(
             sa.text(
-                "update public.user set chosen_assistants = :chosen_assistants where id = :id"
+                'update "user" set chosen_assistants = :chosen_assistants where id = :id'
             ),
             {"chosen_assistants": chosen_assistants, "id": id},
         )

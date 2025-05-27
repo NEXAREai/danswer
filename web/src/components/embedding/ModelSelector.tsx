@@ -1,13 +1,12 @@
 import { getCurrentModelCopy } from "@/app/admin/embeddings/interfaces";
 import {
-  AVAILABLE_CLOUD_PROVIDERS,
-  AVAILABLE_MODELS,
   EmbeddingModelDescriptor,
   getIconForRerankType,
   getTitleForRerankType,
   HostedEmbeddingModel,
 } from "./interfaces";
 import { FiExternalLink } from "react-icons/fi";
+import CardSection from "../admin/CardSection";
 
 export function ModelPreview({
   model,
@@ -19,8 +18,10 @@ export function ModelPreview({
   const currentModelCopy = getCurrentModelCopy(model.model_name);
 
   return (
-    <div
-      className={`border border-border rounded shadow-md ${display ? "bg-inverted rounded-lg p-4" : "bg-hover-light p-2"} w-96 flex flex-col`}
+    <CardSection
+      className={`shadow-md ${
+        display ? "bg-inverted rounded-lg p-4" : "bg-accent-background p-2"
+      } w-96 flex flex-col`}
     >
       <div className="font-bold text-lg flex">{model.model_name}</div>
       <div className="text-sm mt-1 mx-1">
@@ -28,7 +29,7 @@ export function ModelPreview({
           currentModelCopy?.description ||
           "Custom model—no description is available."}
       </div>
-    </div>
+    </CardSection>
   );
 }
 
@@ -47,8 +48,8 @@ export function ModelOption({
     <div
       className={`p-4 w-96 border rounded-lg transition-all duration-200 ${
         selected
-          ? "border-blue-500 bg-blue-50 shadow-md"
-          : "border-gray-200 hover:border-blue-300 hover:shadow-sm"
+          ? "border-blue-800 bg-blue-50 dark:bg-blue-950 dark:border-blue-700 shadow-md"
+          : "border-background-200 hover:border-blue-300 hover:shadow-sm"
       }`}
     >
       <div className="flex items-center justify-between mb-3">
@@ -66,12 +67,12 @@ export function ModelOption({
           </a>
         )}
       </div>
-      <p className="text-sm k text-gray-600 text-left mb-2">
+      <p className="text-sm k text-text-600 dark:text-neutral-400 text-left mb-2">
         {model.description ||
           currentModelCopy?.description ||
           "Custom model—no description is available."}
       </p>
-      <div className="text-xs text-gray-500">
+      <div className="text-xs text-text-500">
         {model.isDefault ? "Default" : "Self-hosted"}
       </div>
       {onSelect && (
@@ -80,7 +81,7 @@ export function ModelOption({
             className={`w-full p-2 rounded-lg text-sm ${
               selected
                 ? "bg-background-125 border border-border cursor-not-allowed"
-                : "bg-background border border-border hover:bg-hover cursor-pointer"
+                : "bg-background border border-border hover:bg-accent-background-hovered cursor-pointer"
             }`}
             onClick={(e) => {
               e.stopPropagation();
@@ -107,10 +108,17 @@ export function ModelSelector({
   const groupedModelOptions = modelOptions.reduce(
     (acc, model) => {
       const [type] = model.model_name.split("/");
-      if (!acc[type]) {
-        acc[type] = [];
+      if (type !== undefined) {
+        if (!acc[type]) {
+          acc[type] = [];
+        }
+
+        const acc_by_type = acc[type];
+        if (acc_by_type !== undefined) {
+          acc_by_type.push(model);
+        }
       }
-      acc[type].push(model);
+
       return acc;
     },
     {} as Record<string, HostedEmbeddingModel[]>

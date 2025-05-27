@@ -3,129 +3,219 @@
 import { errorHandlingFetcher, RedirectError } from "@/lib/fetcher";
 import useSWR from "swr";
 import { Modal } from "../Modal";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { getSecondsUntilExpiration } from "@/lib/time";
 import { User } from "@/lib/types";
-import { mockedRefreshToken, refreshToken } from "./refreshUtils";
-import { CUSTOM_REFRESH_URL } from "@/lib/constants";
-
+import { refreshToken } from "./refreshUtils";
+import { NEXT_PUBLIC_CUSTOM_REFRESH_URL } from "@/lib/constants";
+import { Button } from "../ui/button";
+import { logout } from "@/lib/user";
+import { usePathname, useRouter } from "next/navigation";
 export const HealthCheckBanner = () => {
+  const router = useRouter();
   const { error } = useSWR("/api/health", errorHandlingFetcher);
   const [expired, setExpired] = useState(false);
-  const [secondsUntilExpiration, setSecondsUntilExpiration] = useState<
-    number | null
-  >(null);
-  const { data: user, mutate: mutateUser } = useSWR<User>(
-    "/api/me",
-    errorHandlingFetcher
-  );
+  const [showLoggedOutModal, setShowLoggedOutModal] = useState(false);
+  const pathname = usePathname();
+  const expirationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshIntervalRef = useRef<NodeJS.Timer | null>(null);
 
-  const updateExpirationTime = async () => {
-    const updatedUser = await mutateUser();
+  // Reduce revalidation frequency with dedicated SWR config
+  const {
+    data: user,
+    mutate: mutateUser,
+    error: userError,
+  } = useSWR<User>("/api/me", errorHandlingFetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    dedupingInterval: 30000, // 30 seconds
+  });
 
-    if (updatedUser) {
-      const seconds = getSecondsUntilExpiration(updatedUser);
-      setSecondsUntilExpiration(seconds);
-      console.debug(`Updated seconds until expiration:! ${seconds}`);
+  // Handle 403 errors from the /api/me endpoint
+  useEffect(() => {
+    if (userError && userError.status === 403) {
+      logout().then(() => {
+        if (!pathname?.includes("/auth")) {
+          setShowLoggedOutModal(true);
+        }
+      });
     }
+  }, [userError, pathname]);
+
+  // Function to handle the "Log in" button click
+  const handleLogin = () => {
+    setShowLoggedOutModal(false);
+    router.push("/auth/login");
   };
 
-  useEffect(() => {
-    updateExpirationTime();
-  }, [user]);
+  // Function to set up expiration timeout
+  const setupExpirationTimeout = useCallback(
+    (secondsUntilExpiration: number) => {
+      // Clear any existing timeout
+      if (expirationTimeoutRef.current) {
+        clearTimeout(expirationTimeoutRef.current);
+      }
 
-  useEffect(() => {
-    if (CUSTOM_REFRESH_URL) {
-      const refreshUrl = CUSTOM_REFRESH_URL;
-      let refreshTimeoutId: NodeJS.Timeout;
-      let expireTimeoutId: NodeJS.Timeout;
+      // Set timeout to show logout modal when session expires
+      const timeUntilExpire = (secondsUntilExpiration + 10) * 1000;
+      expirationTimeoutRef.current = setTimeout(() => {
+        setExpired(true);
 
-      const attemptTokenRefresh = async () => {
-        try {
-          // NOTE: This is a mocked refresh token for testing purposes.
-          // const refreshTokenData = mockedRefreshToken();
-
-          const refreshTokenData = await refreshToken(refreshUrl);
-
-          const response = await fetch(
-            "/api/enterprise-settings/refresh-token",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify(refreshTokenData),
-            }
-          );
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          await new Promise((resolve) => setTimeout(resolve, 4000));
-
-          await mutateUser(undefined, { revalidate: true });
-          updateExpirationTime();
-        } catch (error) {
-          console.error("Error refreshing token:", error);
+        if (!pathname?.includes("/auth")) {
+          setShowLoggedOutModal(true);
         }
-      };
-
-      const scheduleRefreshAndExpire = () => {
-        if (secondsUntilExpiration !== null) {
-          const timeUntilRefresh = (secondsUntilExpiration + 0.5) * 1000;
-          refreshTimeoutId = setTimeout(attemptTokenRefresh, timeUntilRefresh);
-
-          const timeUntilExpire = (secondsUntilExpiration + 10) * 1000;
-          expireTimeoutId = setTimeout(() => {
-            console.debug("Session expired. Setting expired state to true.");
-            setExpired(true);
-          }, timeUntilExpire);
-        }
-      };
-
-      scheduleRefreshAndExpire();
-
-      return () => {
-        clearTimeout(refreshTimeoutId);
-        clearTimeout(expireTimeoutId);
-      };
-    }
-  }, [secondsUntilExpiration, user]);
-
-  if (!error && !expired) {
-    return null;
-  }
-
-  console.debug(
-    `Rendering HealthCheckBanner. Error: ${error}, Expired: ${expired}`
+      }, timeUntilExpire);
+    },
+    [pathname]
   );
 
-  if (error instanceof RedirectError || expired) {
+  // Clean up any timeouts/intervals when component unmounts
+  useEffect(() => {
+    return () => {
+      if (expirationTimeoutRef.current) {
+        clearTimeout(expirationTimeoutRef.current);
+      }
+
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // Set up token refresh logic if custom refresh URL exists
+  useEffect(() => {
+    if (!user) return;
+
+    const secondsUntilExpiration = getSecondsUntilExpiration(user);
+    if (secondsUntilExpiration === null) return;
+
+    // Set up expiration timeout based on current user data
+    setupExpirationTimeout(secondsUntilExpiration);
+
+    if (NEXT_PUBLIC_CUSTOM_REFRESH_URL) {
+      const refreshUrl = NEXT_PUBLIC_CUSTOM_REFRESH_URL;
+
+      const attemptTokenRefresh = async () => {
+        let retryCount = 0;
+        const maxRetries = 3;
+
+        while (retryCount < maxRetries) {
+          try {
+            const refreshTokenData = await refreshToken(refreshUrl);
+            if (!refreshTokenData) {
+              throw new Error("Failed to refresh token");
+            }
+
+            const response = await fetch(
+              "/api/enterprise-settings/refresh-token",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(refreshTokenData),
+              }
+            );
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            // Wait for backend to process the token
+            await new Promise((resolve) => setTimeout(resolve, 4000));
+
+            // Get updated user data
+            const updatedUser = await mutateUser();
+
+            if (updatedUser) {
+              // Reset expiration timeout with new expiration time
+              const newSecondsUntilExpiration =
+                getSecondsUntilExpiration(updatedUser);
+              if (newSecondsUntilExpiration !== null) {
+                setupExpirationTimeout(newSecondsUntilExpiration);
+                console.debug(
+                  `Token refreshed, new expiration in ${newSecondsUntilExpiration} seconds`
+                );
+              }
+            }
+
+            break; // Success - exit the retry loop
+          } catch (error) {
+            console.error(
+              `Error refreshing token (attempt ${
+                retryCount + 1
+              }/${maxRetries}):`,
+              error
+            );
+            retryCount++;
+
+            if (retryCount === maxRetries) {
+              console.error("Max retry attempts reached");
+            } else {
+              // Wait before retrying (exponential backoff)
+              await new Promise((resolve) =>
+                setTimeout(resolve, Math.pow(2, retryCount) * 1000)
+              );
+            }
+          }
+        }
+      };
+
+      // Set up refresh interval
+      const refreshInterval = 60 * 15; // 15 mins
+
+      // Clear any existing interval
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+
+      refreshIntervalRef.current = setInterval(
+        attemptTokenRefresh,
+        refreshInterval * 1000
+      );
+
+      // If we're going to expire before the next refresh, kick off a refresh now
+      if (secondsUntilExpiration < refreshInterval) {
+        attemptTokenRefresh();
+      }
+    }
+  }, [user, setupExpirationTimeout, mutateUser]);
+
+  // Logged out modal
+  if (showLoggedOutModal) {
     return (
       <Modal
-        width="w-1/4"
+        width="w-1/3"
         className="overflow-y-hidden flex flex-col"
-        title="You've been logged out"
+        title="You Have Been Logged Out"
       >
         <div className="flex flex-col gap-y-4">
           <p className="text-sm">
             Your session has expired. Please log in again to continue.
           </p>
-          <a
-            href="/auth/login"
-            className="w-full mt-4 mx-auto rounded-md text-text-200 py-2 bg-background-900 text-center hover:bg-emphasis animtate duration-300 transition-bg"
-          >
-            Log in
-          </a>
+          <div className="flex flex-row gap-x-2 justify-end mt-4">
+            <Button onClick={handleLogin}>Log In</Button>
+          </div>
         </div>
       </Modal>
     );
+  }
+
+  if (!error && !expired) {
+    return null;
+  }
+
+  if (error instanceof RedirectError || expired) {
+    if (!pathname?.includes("/auth")) {
+      setShowLoggedOutModal(true);
+    }
+    return null;
   } else {
     return (
-      <div className="fixed top-0 left-0 z-[101] w-full text-xs mx-auto bg-gradient-to-r from-red-900 to-red-700 p-2 rounded-sm border-hidden text-text-200">
+      <div className="fixed top-0 left-0 z-[101] w-full text-xs mx-auto bg-gradient-to-r from-red-900 to-red-700 p-2 rounded-sm border-hidden text-neutral-50 dark:text-neutral-100">
         <p className="font-bold pb-1">The backend is currently unavailable.</p>
 
         <p className="px-1">
-          If this is your initial setup or you just updated your Danswer
+          If this is your initial setup or you just updated your Onyx
           deployment, this is likely because the backend is still starting up.
           Give it a minute or two, and then refresh the page. If that does not
           work, make sure the backend is setup and/or contact an administrator.

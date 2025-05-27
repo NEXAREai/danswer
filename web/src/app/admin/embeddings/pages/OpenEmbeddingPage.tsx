@@ -1,5 +1,8 @@
 "use client";
-import { Button, Card, Text } from "@tremor/react";
+
+import { Button } from "@/components/ui/button";
+import Text from "@/components/ui/text";
+import Title from "@/components/ui/title";
 import { ModelSelector } from "../../../../components/embedding/ModelSelector";
 import {
   AVAILABLE_MODELS,
@@ -8,12 +11,12 @@ import {
 } from "../../../../components/embedding/interfaces";
 import { CustomModelForm } from "../../../../components/embedding/CustomModelForm";
 import { useState } from "react";
-import { Title } from "@tremor/react";
+import CardSection from "@/components/admin/CardSection";
 export default function OpenEmbeddingPage({
   onSelectOpenSource,
   selectedProvider,
 }: {
-  onSelectOpenSource: (model: HostedEmbeddingModel) => Promise<void>;
+  onSelectOpenSource: (model: HostedEmbeddingModel) => void;
   selectedProvider: HostedEmbeddingModel | CloudEmbeddingModel;
 }) {
   const [configureModel, setConfigureModel] = useState(false);
@@ -34,7 +37,12 @@ export default function OpenEmbeddingPage({
 
       <Text className="mt-6">
         Alternatively, (if you know what you&apos;re doing) you can specify a{" "}
-        <a target="_blank" href="https://www.sbert.net/" className="text-link">
+        <a
+          target="_blank"
+          href="https://www.sbert.net/"
+          className="text-link"
+          rel="noreferrer"
+        >
           SentenceTransformers
         </a>
         -compatible model of your choice below. The rough list of supported
@@ -43,25 +51,30 @@ export default function OpenEmbeddingPage({
           target="_blank"
           href="https://huggingface.co/models?library=sentence-transformers&sort=trending"
           className="text-link"
+          rel="noreferrer"
         >
           here
         </a>
         .
         <br />
-        <b>NOTE:</b> not all models listed will work with Danswer, since some
-        have unique interfaces or special requirements. If in doubt, reach out
-        to the Danswer team.
+        <b>NOTE:</b> not all models listed will work with Onyx, since some have
+        unique interfaces or special requirements. If in doubt, reach out to the
+        Onyx team.
       </Text>
       {!configureModel && (
-        <Button onClick={() => setConfigureModel(true)} className="mt-4">
+        <Button
+          onClick={() => setConfigureModel(true)}
+          className="mt-4"
+          variant="secondary"
+        >
           Configure custom model
         </Button>
       )}
       {configureModel && (
         <div className="w-full flex">
-          <Card className="mt-4 2xl:w-4/6 mx-auto">
+          <CardSection className="mt-4 2xl:w-4/6 mx-auto">
             <CustomModelForm onSubmit={onSelectOpenSource} />
-          </Card>
+          </CardSection>
         </div>
       )}
     </div>

@@ -1,19 +1,15 @@
 "use client";
 
 import { errorHandlingFetcher } from "@/lib/fetcher";
-import useSWR, { mutate } from "swr";
+import useSWR from "swr";
 import { Dispatch, SetStateAction, useState } from "react";
 import {
   CloudEmbeddingProvider,
   CloudEmbeddingModel,
-  AVAILABLE_CLOUD_PROVIDERS,
   AVAILABLE_MODELS,
-  INVALID_OLD_MODEL,
   HostedEmbeddingModel,
-  EmbeddingModelDescriptor,
   EmbeddingProvider,
 } from "../../../components/embedding/interfaces";
-import { Connector } from "@/lib/connectors/connectors";
 import OpenEmbeddingPage from "./pages/OpenEmbeddingPage";
 import CloudEmbeddingPage from "./pages/CloudEmbeddingPage";
 import { ProviderCreationModal } from "./modals/ProviderCreationModal";
@@ -28,10 +24,13 @@ import {
   EMBEDDING_MODELS_ADMIN_URL,
   EMBEDDING_PROVIDERS_ADMIN_URL,
 } from "../configuration/llm/constants";
+import { AdvancedSearchConfiguration } from "./interfaces";
 
 export interface EmbeddingDetails {
   api_key?: string;
   api_url?: string;
+  api_version?: string;
+  deployment_name?: string;
   custom_config: any;
   provider_type: EmbeddingProvider;
 }
@@ -42,6 +41,8 @@ export function EmbeddingModelSelection({
   updateSelectedProvider,
   modelTab,
   setModelTab,
+  updateCurrentModel,
+  advancedEmbeddingDetails,
 }: {
   modelTab: "open" | "cloud" | null;
   setModelTab: Dispatch<SetStateAction<"open" | "cloud" | null>>;
@@ -50,6 +51,11 @@ export function EmbeddingModelSelection({
   updateSelectedProvider: (
     model: CloudEmbeddingModel | HostedEmbeddingModel
   ) => void;
+  updateCurrentModel: (
+    newModel: string,
+    provider_type: EmbeddingProvider
+  ) => void;
+  advancedEmbeddingDetails: AdvancedSearchConfiguration;
 }) {
   // Cloud Provider based modals
   const [showTentativeProvider, setShowTentativeProvider] =
@@ -73,12 +79,6 @@ export function EmbeddingModelSelection({
   const [showTentativeOpenProvider, setShowTentativeOpenProvider] =
     useState<HostedEmbeddingModel | null>(null);
 
-  // Enabled / unenabled providers
-  const [newEnabledProviders, setNewEnabledProviders] = useState<string[]>([]);
-  const [newUnenabledProviders, setNewUnenabledProviders] = useState<string[]>(
-    []
-  );
-
   const [showDeleteCredentialsModal, setShowDeleteCredentialsModal] =
     useState<boolean>(false);
 
@@ -91,73 +91,14 @@ export function EmbeddingModelSelection({
     { refreshInterval: 5000 } // 5 seconds
   );
 
-  const { data: embeddingProviderDetails } = useSWR<EmbeddingDetails[]>(
+  const {
+    data: embeddingProviderDetails,
+    mutate: mutateEmbeddingProviderDetails,
+  } = useSWR<EmbeddingDetails[]>(
     EMBEDDING_PROVIDERS_ADMIN_URL,
     errorHandlingFetcher,
     { refreshInterval: 5000 } // 5 seconds
   );
-
-  const { data: connectors } = useSWR<Connector<any>[]>(
-    "/api/manage/connector",
-    errorHandlingFetcher,
-    { refreshInterval: 5000 } // 5 seconds
-  );
-
-  const onConfirmSelection = async (model: EmbeddingModelDescriptor) => {
-    const response = await fetch(
-      "/api/search-settings/set-new-search-settings",
-      {
-        method: "POST",
-        body: JSON.stringify({ ...model, index_name: null }),
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
-    if (response.ok) {
-      setShowTentativeModel(null);
-      mutate("/api/search-settings/get-secondary-search-settings");
-      if (!connectors || !connectors.length) {
-        setShowAddConnectorPopup(true);
-      }
-    } else {
-      alert(`Failed to update embedding model - ${await response.text()}`);
-    }
-  };
-
-  const onSelectOpenSource = async (model: HostedEmbeddingModel) => {
-    if (selectedProvider?.model_name === INVALID_OLD_MODEL) {
-      await onConfirmSelection(model);
-    } else {
-      setShowTentativeOpenProvider(model);
-    }
-  };
-
-  const clientsideAddProvider = (provider: CloudEmbeddingProvider) => {
-    const providerType = provider.provider_type;
-    setNewEnabledProviders((newEnabledProviders) => [
-      ...newEnabledProviders,
-      providerType,
-    ]);
-    setNewUnenabledProviders((newUnenabledProviders) =>
-      newUnenabledProviders.filter(
-        (givenProviderType) => givenProviderType != providerType
-      )
-    );
-  };
-
-  const clientsideRemoveProvider = (provider: CloudEmbeddingProvider) => {
-    const providerType = provider.provider_type;
-    setNewEnabledProviders((newEnabledProviders) =>
-      newEnabledProviders.filter(
-        (givenProviderType) => givenProviderType != providerType
-      )
-    );
-    setNewUnenabledProviders((newUnenabledProviders) => [
-      ...newUnenabledProviders,
-      providerType,
-    ]);
-  };
 
   return (
     <div className="p-2">
@@ -187,14 +128,16 @@ export function EmbeddingModelSelection({
 
       {showTentativeProvider && (
         <ProviderCreationModal
+          updateCurrentModel={updateCurrentModel}
           isProxy={showTentativeProvider.provider_type == "LiteLLM"}
+          isAzure={showTentativeProvider.provider_type == "Azure"}
           selectedProvider={showTentativeProvider}
           onConfirm={() => {
             setShowTentativeProvider(showUnconfiguredProvider);
-            clientsideAddProvider(showTentativeProvider);
             if (showModelInQueue) {
               setShowTentativeModel(showModelInQueue);
             }
+            mutateEmbeddingProviderDetails();
           }}
           onCancel={() => {
             setShowModelInQueue(null);
@@ -206,10 +149,11 @@ export function EmbeddingModelSelection({
       {changeCredentialsProvider && (
         <ChangeCredentialsModal
           isProxy={changeCredentialsProvider.provider_type == "LiteLLM"}
+          isAzure={changeCredentialsProvider.provider_type == "Azure"}
           useFileUpload={changeCredentialsProvider.provider_type == "Google"}
           onDeleted={() => {
-            clientsideRemoveProvider(changeCredentialsProvider);
             setChangeCredentialsProvider(null);
+            mutateEmbeddingProviderDetails();
           }}
           provider={changeCredentialsProvider}
           onConfirm={() => setChangeCredentialsProvider(null)}
@@ -237,12 +181,13 @@ export function EmbeddingModelSelection({
           modelProvider={showTentativeProvider!}
           onConfirm={() => {
             setShowDeleteCredentialsModal(false);
+            mutateEmbeddingProviderDetails();
           }}
           onCancel={() => setShowDeleteCredentialsModal(false)}
         />
       )}
 
-      <p className="t mb-4">
+      <p className="mb-4">
         Select from cloud, self-hosted models, or continue with your current
         embedding model.
       </p>
@@ -251,8 +196,8 @@ export function EmbeddingModelSelection({
           onClick={() => setModelTab(null)}
           className={`mr-4 p-2 font-bold  ${
             !modelTab
-              ? "rounded bg-background-900 text-text-100 underline"
-              : " hover:underline bg-background-100"
+              ? "rounded bg-neutral-900 dark:bg-neutral-950 text-neutral-100 dark:text-neutral-300 underline"
+              : " hover:underline bg-neutral-100 dark:bg-neutral-900"
           }`}
         >
           Current
@@ -262,8 +207,8 @@ export function EmbeddingModelSelection({
             onClick={() => setModelTab("cloud")}
             className={`mx-2 p-2 font-bold  ${
               modelTab == "cloud"
-                ? "rounded bg-background-900 text-text-100 underline"
-                : " hover:underline bg-background-100"
+                ? "rounded bg-neutral-900 dark:bg-neutral-950 text-neutral-100 dark:text-neutral-300 underline"
+                : " hover:underline bg-neutral-100 dark:bg-neutral-900"
             }`}
           >
             Cloud-based
@@ -274,8 +219,8 @@ export function EmbeddingModelSelection({
             onClick={() => setModelTab("open")}
             className={` mx-2 p-2 font-bold  ${
               modelTab == "open"
-                ? "rounded bg-background-900 text-text-100 underline"
-                : "hover:underline bg-background-100"
+                ? "rounded bg-neutral-900 dark:bg-neutral-950 text-neutral-100 dark:text-neutral-300 underline"
+                : "hover:underline bg-neutral-100 dark:bg-neutral-900"
             }`}
           >
             Self-hosted
@@ -286,20 +231,21 @@ export function EmbeddingModelSelection({
       {modelTab == "open" && (
         <OpenEmbeddingPage
           selectedProvider={selectedProvider}
-          onSelectOpenSource={onSelectOpenSource}
+          onSelectOpenSource={(model: HostedEmbeddingModel) => {
+            setShowTentativeOpenProvider(model);
+          }}
         />
       )}
 
       {modelTab == "cloud" && (
         <CloudEmbeddingPage
+          advancedEmbeddingDetails={advancedEmbeddingDetails}
           embeddingModelDetails={embeddingModelDetails}
           setShowModelInQueue={setShowModelInQueue}
           setShowTentativeModel={setShowTentativeModel}
           currentModel={selectedProvider || currentEmbeddingModel}
           setAlreadySelectedModel={setAlreadySelectedModel}
           embeddingProviderDetails={embeddingProviderDetails}
-          newEnabledProviders={newEnabledProviders}
-          newUnenabledProviders={newUnenabledProviders}
           setShowTentativeProvider={setShowTentativeProvider}
           setChangeCredentialsProvider={setChangeCredentialsProvider}
         />

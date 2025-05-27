@@ -5,13 +5,14 @@ Revises: 570282d33c49
 Create Date: 2024-05-05 19:30:34.317972
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.sql import table
 from sqlalchemy.dialects import postgresql
 import json
 
-from danswer.utils.encryption import encrypt_string_to_bytes
+from onyx.utils.encryption import encrypt_string_to_bytes
 
 # revision identifiers, used by Alembic.
 revision = "0a98909f2757"

@@ -1,10 +1,7 @@
-import { Card } from "@tremor/react";
-import { HeaderWrapper } from "@/components/header/HeaderWrapper";
+import CardSection from "@/components/admin/CardSection";
 import { AssistantEditor } from "@/app/admin/assistants/AssistantEditor";
-import { SuccessfulPersonaUpdateRedirectType } from "@/app/admin/assistants/enums";
 import { fetchAssistantEditorInfoSS } from "@/lib/assistants/fetchPersonaEditorInfoSS";
 import { ErrorCallout } from "@/components/ErrorCallout";
-import { LargeBackButton } from "../LargeBackButton";
 
 export default async function Page() {
   const [values, error] = await fetchAssistantEditorInfoSS();
@@ -18,38 +15,21 @@ export default async function Page() {
     );
   } else {
     body = (
-      <div className="w-full my-16">
+      <div className="w-full py-8">
         <div className="px-32">
           <div className="mx-auto container">
-            <Card>
+            <CardSection className="!border-none !bg-transparent !ring-none">
               <AssistantEditor
                 {...values}
                 defaultPublic={false}
-                redirectType={SuccessfulPersonaUpdateRedirectType.CHAT}
                 shouldAddAssistantToUserPreferences={true}
               />
-            </Card>
+            </CardSection>
           </div>
         </div>
       </div>
     );
   }
 
-  return (
-    <div>
-      <HeaderWrapper>
-        <div className="h-full flex flex-col">
-          <div className="flex my-auto">
-            <LargeBackButton />
-
-            <h1 className="flex text-xl text-strong font-bold my-auto">
-              New Assistant
-            </h1>
-          </div>
-        </div>
-      </HeaderWrapper>
-
-      {body}
-    </div>
-  );
+  return <div>{body}</div>;
 }

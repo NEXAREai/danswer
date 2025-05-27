@@ -2,10 +2,11 @@
 
 import { Modal } from "@/components/Modal";
 import { SettingsContext } from "@/components/settings/SettingsProvider";
-import { Button } from "@tremor/react";
+import { Button } from "@/components/ui/button";
 import { useContext, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { transformLinkUri } from "@/lib/utils";
 
 const ALL_USERS_INITIAL_POPUP_FLOW_COMPLETED =
   "allUsersInitialPopupFlowCompleted";
@@ -17,7 +18,7 @@ export function ChatPopup() {
     setCompletedFlow(
       localStorage.getItem(ALL_USERS_INITIAL_POPUP_FLOW_COMPLETED) === "true"
     );
-  });
+  }, []);
 
   const settings = useContext(SettingsContext);
   const enterpriseSettings = settings?.enterpriseSettings;
@@ -33,7 +34,7 @@ export function ChatPopup() {
     enterpriseSettings?.custom_popup_header ||
     (isConsentScreen
       ? "Terms of Use"
-      : `Welcome to ${enterpriseSettings?.application_name || "Danswer"}!`);
+      : `Welcome to ${enterpriseSettings?.application_name || "Onyx"}!`);
 
   const popupContent =
     enterpriseSettings?.custom_popup_content ||
@@ -44,23 +45,26 @@ export function ChatPopup() {
   return (
     <Modal width="w-3/6 xl:w-[700px]" title={popupTitle}>
       <>
-        <ReactMarkdown
-          className="prose max-w-full"
-          components={{
-            a: ({ node, ...props }) => (
-              <a
-                {...props}
-                className="text-link hover:text-link-hover"
-                target="_blank"
-                rel="noopener noreferrer"
-              />
-            ),
-            p: ({ node, ...props }) => <p {...props} className="text-sm" />,
-          }}
-          remarkPlugins={[remarkGfm]}
-        >
-          {popupContent}
-        </ReactMarkdown>
+        <div className="overflow-y-auto max-h-[90vh] py-8 px-4 text-left">
+          <ReactMarkdown
+            className="prose text-text-800 dark:text-neutral-100 max-w-full"
+            components={{
+              a: ({ node, ...props }) => (
+                <a
+                  {...props}
+                  className="text-link hover:text-link-hover"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              ),
+              p: ({ node, ...props }) => <p {...props} className="text-sm" />,
+            }}
+            remarkPlugins={[remarkGfm]}
+            urlTransform={transformLinkUri}
+          >
+            {popupContent}
+          </ReactMarkdown>
+        </div>
 
         {showConsentError && (
           <p className="text-red-500 text-sm mt-2">
@@ -71,15 +75,15 @@ export function ChatPopup() {
         <div className="flex w-full justify-center gap-4 mt-4">
           {isConsentScreen && (
             <Button
-              size="xs"
-              color="red"
+              size="sm"
+              variant="destructive"
               onClick={() => setShowConsentError(true)}
             >
               Cancel
             </Button>
           )}
           <Button
-            size="xs"
+            size="sm"
             onClick={() => {
               localStorage.setItem(
                 ALL_USERS_INITIAL_POPUP_FLOW_COMPLETED,

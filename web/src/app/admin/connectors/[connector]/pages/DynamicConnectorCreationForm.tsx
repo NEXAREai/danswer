@@ -1,99 +1,100 @@
-import React, { Dispatch, FC, SetStateAction } from "react";
-import CredentialSubText, {
-  AdminBooleanFormField,
-} from "@/components/credentials/CredentialFields";
-import { FileUpload } from "@/components/admin/connectors/FileUpload";
+import React, { FC, useEffect, useState } from "react";
+import CredentialSubText from "@/components/credentials/CredentialFields";
 import { ConnectionConfiguration } from "@/lib/connectors/connectors";
-import SelectInput from "./ConnectorInput/SelectInput";
-import NumberInput from "./ConnectorInput/NumberInput";
 import { TextFormField } from "@/components/admin/connectors/Field";
-import ListInput from "./ConnectorInput/ListInput";
-import FileInput from "./ConnectorInput/FileInput";
+import { AdvancedOptionsToggle } from "@/components/AdvancedOptionsToggle";
+import { AccessTypeForm } from "@/components/admin/connectors/AccessTypeForm";
+import { AccessTypeGroupSelector } from "@/components/admin/connectors/AccessTypeGroupSelector";
+import { ConfigurableSources } from "@/lib/types";
+import { Credential } from "@/lib/connectors/credentials";
+import { RenderField } from "./FieldRendering";
+import { useFormikContext } from "formik";
 
 export interface DynamicConnectionFormProps {
   config: ConnectionConfiguration;
-  selectedFiles: File[];
-  setSelectedFiles: Dispatch<SetStateAction<File[]>>;
   values: any;
+  connector: ConfigurableSources;
+  currentCredential: Credential<any> | null;
 }
 
 const DynamicConnectionForm: FC<DynamicConnectionFormProps> = ({
   config,
-  selectedFiles,
-  setSelectedFiles,
   values,
+  connector,
+  currentCredential,
 }) => {
+  const { setFieldValue } = useFormikContext<any>(); // Get Formik's context functions
+
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [connectorNameInitialized, setConnectorNameInitialized] =
+    useState(false);
+
+  let initialConnectorName = "";
+  if (config.initialConnectorName) {
+    initialConnectorName =
+      currentCredential?.credential_json?.[config.initialConnectorName] ?? "";
+  }
+
+  useEffect(() => {
+    const field_value = values["name"];
+    if (initialConnectorName && !connectorNameInitialized && !field_value) {
+      setFieldValue("name", initialConnectorName);
+      setConnectorNameInitialized(true);
+    }
+  }, [initialConnectorName, setFieldValue, values]);
+
   return (
     <>
-      <h2 className="text-2xl font-bold text-text-800">{config.description}</h2>
-
       {config.subtext && (
         <CredentialSubText>{config.subtext}</CredentialSubText>
       )}
 
       <TextFormField
-        subtext="A descriptive name for the connector. This will be used to identify the connector in the Admin UI."
+        subtext="A descriptive name for the connector."
         type={"text"}
         label={"Connector Name"}
         name={"name"}
       />
 
-      {config.values.map((field) => {
-        if (!field.hidden) {
-          return (
-            <div key={field.name}>
-              {field.type == "file" ? (
-                <FileUpload
-                  name={field.name}
-                  selectedFiles={selectedFiles}
-                  setSelectedFiles={setSelectedFiles}
-                />
-              ) : field.type == "zip" ? (
-                <FileInput
-                  name={field.name}
-                  label={field.label}
-                  optional={field.optional}
-                  description={field.description}
-                  selectedFiles={selectedFiles}
-                  setSelectedFiles={setSelectedFiles}
-                />
-              ) : field.type === "list" ? (
-                <ListInput field={field} />
-              ) : field.type === "select" ? (
-                <SelectInput
-                  name={field.name}
-                  optional={field.optional}
-                  description={field.description}
-                  options={field.options || []}
-                  label={field.label}
-                />
-              ) : field.type === "number" ? (
-                <NumberInput
-                  label={field.label}
-                  optional={field.optional}
-                  description={field.description}
-                  name={field.name}
-                />
-              ) : field.type === "checkbox" ? (
-                <AdminBooleanFormField
-                  checked={values[field.name]}
-                  subtext={field.description}
-                  name={field.name}
-                  label={field.label}
-                />
-              ) : (
-                <TextFormField
-                  subtext={field.description}
-                  optional={field.optional}
-                  type={field.type}
-                  label={field.label}
-                  name={field.name}
-                />
+      {config.values.map(
+        (field) =>
+          !field.hidden && (
+            <RenderField
+              key={field.name}
+              field={field}
+              values={values}
+              connector={connector}
+              currentCredential={currentCredential}
+            />
+          )
+      )}
+
+      <AccessTypeForm connector={connector} />
+      <AccessTypeGroupSelector connector={connector} />
+
+      {config.advanced_values.length > 0 &&
+        (!config.advancedValuesVisibleCondition ||
+          config.advancedValuesVisibleCondition(values, currentCredential)) && (
+          <>
+            <AdvancedOptionsToggle
+              showAdvancedOptions={showAdvancedOptions}
+              setShowAdvancedOptions={setShowAdvancedOptions}
+            />
+            {showAdvancedOptions &&
+              config.advanced_values.map(
+                (field) =>
+                  !field.hidden && (
+                    <RenderField
+                      key={field.name}
+                      field={field}
+                      values={values}
+                      connector={connector}
+                      currentCredential={currentCredential}
+                    />
+                  )
               )}
-            </div>
-          );
-        }
-      })}
+          </>
+        )}
     </>
   );
 };

@@ -1,5 +1,16 @@
 import { ValidSources } from "../types";
 
+export interface OAuthAdditionalKwargDescription {
+  name: string;
+  display_name: string;
+  description: string;
+}
+
+export interface OAuthDetails {
+  oauth_enabled: boolean;
+  additional_kwargs: OAuthAdditionalKwargDescription[];
+}
+
 export interface CredentialBase<T> {
   credential_json: T;
   admin_public: boolean;
@@ -12,11 +23,16 @@ export interface CredentialBase<T> {
 export interface Credential<T> extends CredentialBase<T> {
   id: number;
   user_id: string | null;
+  user_email: string | null;
   time_created: string;
   time_updated: string;
 }
 export interface GithubCredentialJson {
   github_access_token: string;
+}
+
+export interface GitbookCredentialJson {
+  gitbook_api_key: string;
 }
 
 export interface GitlabCredentialJson {
@@ -53,21 +69,25 @@ export interface SlackCredentialJson {
 }
 
 export interface GmailCredentialJson {
-  gmail_tokens: string;
+  google_tokens: string;
+  google_primary_admin: string;
 }
 
 export interface GoogleDriveCredentialJson {
-  google_drive_tokens: string;
+  google_tokens: string;
+  google_primary_admin: string;
+  authentication_method?: string;
 }
 
 export interface GmailServiceAccountCredentialJson {
-  gmail_service_account_key: string;
-  gmail_delegated_user: string;
+  google_service_account_key: string;
+  google_primary_admin: string;
 }
 
 export interface GoogleDriveServiceAccountCredentialJson {
-  google_drive_service_account_key: string;
-  google_drive_delegated_user: string;
+  google_service_account_key: string;
+  google_primary_admin: string;
+  authentication_method?: string;
 }
 
 export interface SlabCredentialJson {
@@ -99,17 +119,11 @@ export interface LoopioCredentialJson {
 }
 
 export interface LinearCredentialJson {
-  linear_api_key: string;
+  linear_access_token: string;
 }
 
 export interface HubSpotCredentialJson {
   hubspot_access_token: string;
-}
-
-export interface RequestTrackerCredentialJson {
-  requesttracker_username: string;
-  requesttracker_password: string;
-  requesttracker_base_url: string;
 }
 
 export interface Document360CredentialJson {
@@ -158,6 +172,7 @@ export interface SalesforceCredentialJson {
   sf_username: string;
   sf_password: string;
   sf_security_token: string;
+  is_sandbox: boolean;
 }
 
 export interface SharepointCredentialJson {
@@ -186,8 +201,37 @@ export interface AxeroCredentialJson {
   axero_api_token: string;
 }
 
+export interface DiscordCredentialJson {
+  discord_bot_token: string;
+}
+
+export interface FreshdeskCredentialJson {
+  freshdesk_domain: string;
+  freshdesk_password: string;
+  freshdesk_api_key: string;
+}
+
+export interface FirefliesCredentialJson {
+  fireflies_api_key: string;
+}
+
 export interface MediaWikiCredentialJson {}
 export interface WikipediaCredentialJson extends MediaWikiCredentialJson {}
+
+export interface EgnyteCredentialJson {
+  domain: string;
+  access_token: string;
+}
+
+export interface AirtableCredentialJson {
+  airtable_access_token: string;
+}
+
+export interface HighspotCredentialJson {
+  highspot_url: string;
+  highspot_key: string;
+  highspot_secret: string;
+}
 
 export const credentialTemplates: Record<ValidSources, any> = {
   github: { github_access_token: "" } as GithubCredentialJson,
@@ -218,17 +262,12 @@ export const credentialTemplates: Record<ValidSources, any> = {
     gong_access_key_secret: "",
   } as GongCredentialJson,
   zulip: { zuliprc_content: "" } as ZulipCredentialJson,
-  linear: { linear_api_key: "" } as LinearCredentialJson,
+  linear: { linear_access_token: "" } as LinearCredentialJson,
   hubspot: { hubspot_access_token: "" } as HubSpotCredentialJson,
   document360: {
     portal_id: "",
     document360_api_token: "",
   } as Document360CredentialJson,
-  requesttracker: {
-    requesttracker_username: "",
-    requesttracker_password: "",
-    requesttracker_base_url: "",
-  } as RequestTrackerCredentialJson,
   loopio: {
     loopio_subdomain: "",
     loopio_client_id: "",
@@ -239,6 +278,7 @@ export const credentialTemplates: Record<ValidSources, any> = {
     sf_username: "",
     sf_password: "",
     sf_security_token: "",
+    is_sandbox: false,
   } as SalesforceCredentialJson,
   sharepoint: {
     sp_client_id: "",
@@ -289,6 +329,22 @@ export const credentialTemplates: Record<ValidSources, any> = {
     access_key_id: "",
     secret_access_key: "",
   } as OCICredentialJson,
+  freshdesk: {
+    freshdesk_domain: "",
+    freshdesk_password: "",
+    freshdesk_api_key: "",
+  } as FreshdeskCredentialJson,
+  fireflies: {
+    fireflies_api_key: "",
+  } as FirefliesCredentialJson,
+  egnyte: {
+    domain: "",
+    access_token: "",
+  } as EgnyteCredentialJson,
+  airtable: {
+    airtable_access_token: "",
+  } as AirtableCredentialJson,
+  xenforo: null,
   google_sites: null,
   file: null,
   wikipedia: null,
@@ -296,10 +352,19 @@ export const credentialTemplates: Record<ValidSources, any> = {
   web: null,
   not_applicable: null,
   ingestion_api: null,
+  discord: { discord_bot_token: "" } as DiscordCredentialJson,
 
   // NOTE: These are Special Cases
-  google_drive: { google_drive_tokens: "" } as GoogleDriveCredentialJson,
-  gmail: { gmail_tokens: "" } as GmailCredentialJson,
+  google_drive: { google_tokens: "" } as GoogleDriveCredentialJson,
+  gmail: { google_tokens: "" } as GmailCredentialJson,
+  gitbook: {
+    gitbook_api_key: "",
+  } as GitbookCredentialJson,
+  highspot: {
+    highspot_url: "",
+    highspot_key: "",
+    highspot_secret: "",
+  } as HighspotCredentialJson,
 };
 
 export const credentialDisplayNames: Record<string, string> = {
@@ -329,19 +394,13 @@ export const credentialDisplayNames: Record<string, string> = {
   // Slack
   slack_bot_token: "Slack Bot Token",
 
-  // Gmail
-  gmail_tokens: "Gmail Tokens",
+  // Discord
+  discord_bot_token: "Discord Bot Token",
 
-  // Google Drive
-  google_drive_tokens: "Google Drive Tokens",
-
-  // Gmail Service Account
-  gmail_service_account_key: "Gmail Service Account Key",
-  gmail_delegated_user: "Gmail Delegated User",
-
-  // Google Drive Service Account
-  google_drive_service_account_key: "Google Drive Service Account Key",
-  google_drive_delegated_user: "Google Drive Delegated User",
+  // Gmail and Google Drive
+  google_tokens: "Google Oauth Tokens",
+  google_service_account_key: "Google Service Account Key",
+  google_primary_admin: "Primary Admin Email",
 
   // Slab
   slab_bot_token: "Slab Bot Token",
@@ -366,16 +425,10 @@ export const credentialDisplayNames: Record<string, string> = {
   loopio_client_token: "Loopio Client Token",
 
   // Linear
-  linear_api_key: "Linear API Key",
+  linear_access_token: "Linear Access Token",
 
   // HubSpot
   hubspot_access_token: "HubSpot Access Token",
-
-  // Request Tracker
-  requesttracker_username: "Request Tracker Username",
-  requesttracker_password: "Request Tracker Password",
-  requesttracker_base_url: "Request Tracker Base URL",
-
   // Document360
   portal_id: "Document360 Portal ID",
   document360_api_token: "Document360 API Token",
@@ -413,6 +466,7 @@ export const credentialDisplayNames: Record<string, string> = {
   sf_username: "Salesforce Username",
   sf_password: "Salesforce Password",
   sf_security_token: "Salesforce Security Token",
+  is_sandbox: "Is Sandbox Environment",
 
   // Sharepoint
   sp_client_id: "SharePoint Client ID",
@@ -434,7 +488,25 @@ export const credentialDisplayNames: Record<string, string> = {
   // Axero
   base_url: "Axero Base URL",
   axero_api_token: "Axero API Token",
+
+  // Freshdesk
+  freshdesk_domain: "Freshdesk Domain",
+  freshdesk_password: "Freshdesk Password",
+  freshdesk_api_key: "Freshdesk API Key",
+
+  // Fireflies
+  fireflies_api_key: "Fireflies API Key",
+
+  // GitBook
+  gitbook_space_id: "GitBook Space ID",
+  gitbook_api_key: "GitBook API Key",
+
+  //Highspot
+  highspot_url: "Highspot URL",
+  highspot_key: "Highspot Key",
+  highspot_secret: "Highspot Secret",
 };
+
 export function getDisplayNameForCredentialKey(key: string): string {
   return credentialDisplayNames[key] || key;
 }

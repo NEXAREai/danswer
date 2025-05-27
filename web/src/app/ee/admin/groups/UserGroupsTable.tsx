@@ -4,10 +4,9 @@ import {
   Table,
   TableHead,
   TableRow,
-  TableHeaderCell,
   TableBody,
   TableCell,
-} from "@tremor/react";
+} from "@/components/ui/table";
 import { PopupSpec } from "@/components/admin/connectors/Popup";
 import { LoadingAnimation } from "@/components/Loading";
 import { BasicTable } from "@/components/admin/connectors/BasicTable";
@@ -19,6 +18,7 @@ import { FiEdit2, FiUser } from "react-icons/fi";
 import { User, UserGroup } from "@/lib/types";
 import Link from "next/link";
 import { DeleteButton } from "@/components/DeleteButton";
+import { TableHeader } from "@/components/ui/table";
 
 const MAX_USERS_TO_DISPLAY = 6;
 
@@ -57,15 +57,15 @@ export const UserGroupsTable = ({
   return (
     <div>
       <Table className="overflow-visible">
-        <TableHead>
+        <TableHeader>
           <TableRow>
-            <TableHeaderCell>Name</TableHeaderCell>
-            <TableHeaderCell>Connectors</TableHeaderCell>
-            <TableHeaderCell>Users</TableHeaderCell>
-            <TableHeaderCell>Status</TableHeaderCell>
-            <TableHeaderCell>Delete</TableHeaderCell>
+            <TableHead>Name</TableHead>
+            <TableHead>Connectors</TableHead>
+            <TableHead>Users</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Delete</TableHead>
           </TableRow>
-        </TableHead>
+        </TableHeader>
         <TableBody>
           {userGroups
             .filter((userGroup) => !userGroup.is_up_for_deletion)
@@ -74,7 +74,7 @@ export const UserGroupsTable = ({
                 <TableRow key={userGroup.id}>
                   <TableCell>
                     <Link
-                      className="whitespace-nowrap overflow-hidden text-ellipsis inline-flex items-center cursor-pointer p-2 rounded hover:bg-hover max-w-full"
+                      className="whitespace-nowrap overflow-hidden text-ellipsis inline-flex items-center cursor-pointer p-2 rounded hover:bg-accent-background-hovered max-w-full"
                       href={`/admin/groups/${userGroup.id}`}
                     >
                       <FiEdit2 className="mr-2 flex-shrink-0" />
@@ -247,7 +247,7 @@ export const UserGroupsTable = ({
                             <SimpleUserDisplay key={user.id} user={user} />
                           );
                         })}
-                      <div className="text-gray-300">
+                      <div className="text-text-300">
                         + {userGroup.users.length - MAX_USERS_TO_DISPLAY} more
                       </div>
                     </div>
@@ -257,7 +257,7 @@ export const UserGroupsTable = ({
               status: userGroup.is_up_to_date ? (
                 <div className="text-emerald-600">Up to date!</div>
               ) : (
-                <div className="text-gray-300 w-10">
+                <div className="text-text-300 w-10">
                   <LoadingAnimation text="Syncing" />
                 </div>
               ),

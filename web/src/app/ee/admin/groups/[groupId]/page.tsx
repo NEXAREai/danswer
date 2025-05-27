@@ -1,16 +1,17 @@
 "use client";
+import { use } from "react";
 
 import { GroupsIcon } from "@/components/icons/icons";
 import { GroupDisplay } from "./GroupDisplay";
-import { FiAlertCircle, FiChevronLeft } from "react-icons/fi";
 import { useSpecificUserGroup } from "./hook";
 import { ThreeDotsLoader } from "@/components/Loading";
-import { useConnectorCredentialIndexingStatus, useUsers } from "@/lib/hooks";
+import { useConnectorStatus, useUsers } from "@/lib/hooks";
 import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
 import { AdminPageTitle } from "@/components/admin/Title";
 
-const Page = ({ params }: { params: { groupId: string } }) => {
+const Page = (props: { params: Promise<{ groupId: string }> }) => {
+  const params = use(props.params);
   const router = useRouter();
 
   const {
@@ -23,12 +24,12 @@ const Page = ({ params }: { params: { groupId: string } }) => {
     data: users,
     isLoading: userIsLoading,
     error: usersError,
-  } = useUsers();
+  } = useUsers({ includeApiKeys: true });
   const {
     data: ccPairs,
     isLoading: isCCPairsLoading,
     error: ccPairsError,
-  } = useConnectorCredentialIndexingStatus();
+  } = useConnectorStatus();
 
   if (userGroupIsLoading || userIsLoading || isCCPairsLoading) {
     return (

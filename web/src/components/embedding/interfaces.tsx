@@ -1,13 +1,14 @@
 import {
+  AzureIcon,
   CohereIcon,
   GoogleIcon,
   IconProps,
   LiteLLMIcon,
   MicrosoftIcon,
   NomicIcon,
-  OpenAIIcon,
+  OpenAIISVG,
   OpenSourceIcon,
-  VoyageIcon,
+  VoyageIconSVG,
 } from "@/components/icons/icons";
 
 export enum EmbeddingProvider {
@@ -16,6 +17,7 @@ export enum EmbeddingProvider {
   VOYAGE = "Voyage",
   GOOGLE = "Google",
   LITELLM = "LiteLLM",
+  AZURE = "Azure",
 }
 
 export interface CloudEmbeddingProvider {
@@ -49,22 +51,18 @@ export interface EmbeddingModelDescriptor {
   description: string;
   api_key: string | null;
   api_url: string | null;
+  api_version?: string | null;
+  deployment_name?: string | null;
   index_name: string | null;
+  background_reindex_enabled?: boolean;
 }
 
 export interface CloudEmbeddingModel extends EmbeddingModelDescriptor {
   pricePerMillion: number;
-  enabled?: boolean;
-  mtebScore: number;
-  maxContext: number;
 }
 
 export interface HostedEmbeddingModel extends EmbeddingModelDescriptor {
   link?: string;
-  model_dim: number;
-  normalize: boolean;
-  query_prefix: string;
-  passage_prefix: string;
   isDefault?: boolean;
 }
 
@@ -113,7 +111,7 @@ export const AVAILABLE_MODELS: HostedEmbeddingModel[] = [
     model_dim: 384,
     normalize: true,
     description:
-      "The smallest and fastest version of the E5 line of models. If you're running Danswer on a resource constrained system, then this may be a good choice.",
+      "The smallest and fastest version of the E5 line of models. If you're running Onyx on a resource constrained system, then this may be a good choice.",
     link: "https://huggingface.co/intfloat/e5-small-v2",
     query_prefix: "query: ",
     passage_prefix: "passage: ",
@@ -161,13 +159,26 @@ export const LITELLM_CLOUD_PROVIDER: CloudEmbeddingProvider = {
   embedding_models: [], // No default embedding models
 };
 
+export const AZURE_CLOUD_PROVIDER: CloudEmbeddingProvider = {
+  provider_type: EmbeddingProvider.AZURE,
+  website:
+    "https://azure.microsoft.com/en-us/products/cognitive-services/openai/",
+  icon: AzureIcon,
+  description:
+    "Azure OpenAI is a cloud-based AI service that provides access to OpenAI models.",
+  apiLink:
+    "https://docs.microsoft.com/en-us/azure/ai-services/openai/how-to/create-resource",
+  costslink:
+    "https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai/",
+  embedding_models: [], // No default embedding models
+};
+
 export const AVAILABLE_CLOUD_PROVIDERS: CloudEmbeddingProvider[] = [
   {
     provider_type: EmbeddingProvider.COHERE,
     website: "https://cohere.ai",
     icon: CohereIcon,
-    docsLink:
-      "https://docs.danswer.dev/guides/embedding_providers#cohere-models",
+    docsLink: "https://docs.onyx.app/guides/embedding_providers#cohere-models",
     description:
       "AI company specializing in NLP models for various text-based tasks",
     apiLink: "https://dashboard.cohere.ai/api-keys",
@@ -179,9 +190,6 @@ export const AVAILABLE_CLOUD_PROVIDERS: CloudEmbeddingProvider[] = [
         description:
           "Cohere's English embedding model. Good performance for English-language tasks.",
         pricePerMillion: 0.1,
-        mtebScore: 64.5,
-        maxContext: 512,
-        enabled: false,
         model_dim: 1024,
         normalize: false,
         query_prefix: "",
@@ -196,9 +204,6 @@ export const AVAILABLE_CLOUD_PROVIDERS: CloudEmbeddingProvider[] = [
         description:
           "Cohere's lightweight English embedding model. Faster and more efficient for simpler tasks.",
         pricePerMillion: 0.1,
-        mtebScore: 62,
-        maxContext: 512,
-        enabled: false,
         model_dim: 384,
         normalize: false,
         query_prefix: "",
@@ -212,11 +217,10 @@ export const AVAILABLE_CLOUD_PROVIDERS: CloudEmbeddingProvider[] = [
   {
     provider_type: EmbeddingProvider.OPENAI,
     website: "https://openai.com",
-    icon: OpenAIIcon,
+    icon: OpenAIISVG,
     description: "AI industry leader known for ChatGPT and DALL-E",
     apiLink: "https://platform.openai.com/api-keys",
-    docsLink:
-      "https://docs.danswer.dev/guides/embedding_providers#openai-models",
+    docsLink: "https://docs.onyx.app/guides/embedding_providers#openai-models",
     costslink: "https://openai.com/pricing",
     embedding_models: [
       {
@@ -229,9 +233,6 @@ export const AVAILABLE_CLOUD_PROVIDERS: CloudEmbeddingProvider[] = [
         normalize: false,
         query_prefix: "",
         passage_prefix: "",
-        mtebScore: 64.6,
-        maxContext: 8191,
-        enabled: false,
         index_name: "",
         api_key: null,
         api_url: null,
@@ -246,9 +247,6 @@ export const AVAILABLE_CLOUD_PROVIDERS: CloudEmbeddingProvider[] = [
         description:
           "OpenAI's newer, more efficient embedding model. Good balance of performance and cost.",
         pricePerMillion: 0.02,
-        enabled: false,
-        mtebScore: 62.3,
-        maxContext: 8191,
         index_name: "",
         api_key: null,
         api_url: null,
@@ -261,7 +259,7 @@ export const AVAILABLE_CLOUD_PROVIDERS: CloudEmbeddingProvider[] = [
     website: "https://ai.google",
     icon: GoogleIcon,
     docsLink:
-      "https://docs.danswer.dev/guides/embedding_providers#vertex-ai-google-model",
+      "https://docs.onyx.app/guides/embedding_providers#vertex-ai-google-model",
     description:
       "Offers a wide range of AI services including language and vision models",
     apiLink: "https://console.cloud.google.com/apis/credentials",
@@ -269,12 +267,9 @@ export const AVAILABLE_CLOUD_PROVIDERS: CloudEmbeddingProvider[] = [
     embedding_models: [
       {
         provider_type: EmbeddingProvider.GOOGLE,
-        model_name: "text-embedding-004",
+        model_name: "text-embedding-005",
         description: "Google's most recent text embedding model.",
         pricePerMillion: 0.025,
-        mtebScore: 66.31,
-        maxContext: 2048,
-        enabled: false,
         model_dim: 768,
         normalize: false,
         query_prefix: "",
@@ -288,9 +283,6 @@ export const AVAILABLE_CLOUD_PROVIDERS: CloudEmbeddingProvider[] = [
         model_name: "textembedding-gecko@003",
         description: "Google's Gecko embedding model. Powerful and efficient.",
         pricePerMillion: 0.025,
-        mtebScore: 66.31,
-        maxContext: 2048,
-        enabled: false,
         model_dim: 768,
         normalize: false,
         query_prefix: "",
@@ -304,10 +296,9 @@ export const AVAILABLE_CLOUD_PROVIDERS: CloudEmbeddingProvider[] = [
   {
     provider_type: EmbeddingProvider.VOYAGE,
     website: "https://www.voyageai.com",
-    icon: VoyageIcon,
+    icon: VoyageIconSVG,
     description: "Advanced NLP research startup born from Stanford AI Labs",
-    docsLink:
-      "https://docs.danswer.dev/guides/embedding_providers#voyage-models",
+    docsLink: "https://docs.onyx.app/guides/embedding_providers#voyage-models",
     apiLink: "https://www.voyageai.com/dashboard",
     costslink: "https://www.voyageai.com/pricing",
     embedding_models: [
@@ -317,9 +308,6 @@ export const AVAILABLE_CLOUD_PROVIDERS: CloudEmbeddingProvider[] = [
         description:
           "Voyage's large embedding model. High performance with instruction fine-tuning.",
         pricePerMillion: 0.12,
-        mtebScore: 68.28,
-        maxContext: 4000,
-        enabled: false,
         model_dim: 1024,
         normalize: false,
         query_prefix: "",
@@ -334,9 +322,6 @@ export const AVAILABLE_CLOUD_PROVIDERS: CloudEmbeddingProvider[] = [
         description:
           "Voyage's lightweight embedding model. Good balance of performance and efficiency.",
         pricePerMillion: 0.12,
-        mtebScore: 67.13,
-        maxContext: 16000,
-        enabled: false,
         model_dim: 1024,
         normalize: false,
         query_prefix: "",

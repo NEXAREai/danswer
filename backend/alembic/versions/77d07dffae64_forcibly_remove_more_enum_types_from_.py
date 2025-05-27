@@ -5,6 +5,7 @@ Revises: d61e513bef0a
 Create Date: 2023-11-01 12:33:01.999617
 
 """
+
 from alembic import op
 from sqlalchemy import String
 
@@ -18,7 +19,7 @@ depends_on: None = None
 
 def upgrade() -> None:
     # In a PR:
-    # https://github.com/danswer-ai/danswer/pull/397/files#diff-f05fb341f6373790b91852579631b64ca7645797a190837156a282b67e5b19c2
+    # https://github.com/onyx-dot-app/onyx/pull/397/files#diff-f05fb341f6373790b91852579631b64ca7645797a190837156a282b67e5b19c2
     # we directly changed some previous migrations. This caused some users to have native enums
     # while others wouldn't. This has caused some issues when adding new fields to these enums.
     # This migration manually changes the enum types to ensure that nobody uses native enums.

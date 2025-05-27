@@ -1,6 +1,7 @@
 "use client";
 
-import { Button, Text } from "@tremor/react";
+import { Button } from "@/components/ui/button";
+import Text from "@/components/ui/text";
 import { Modal } from "./Modal";
 import Link from "next/link";
 
@@ -24,12 +25,12 @@ export function SwitchModelModal({
           <br />
           Please click the button below to choose a new model. Don&apos;t worry,
           the re-indexing necessary for the switch will happen in the background
-          - your use of Danswer will not be interrupted.
+          - your use of Onyx will not be interrupted.
         </Text>
 
         <div className="flex mt-4">
           <Link href="/admin/models/embedding" className="w-fit mx-auto">
-            <Button size="xs">Choose your Embedding Model</Button>
+            <Button size="sm">Choose your Embedding Model</Button>
           </Link>
         </div>
       </div>

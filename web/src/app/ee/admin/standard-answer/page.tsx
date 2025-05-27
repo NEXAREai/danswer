@@ -6,27 +6,29 @@ import { PopupSpec, usePopup } from "@/components/admin/connectors/Popup";
 import { useStandardAnswers, useStandardAnswerCategories } from "./hooks";
 import { ThreeDotsLoader } from "@/components/Loading";
 import { ErrorCallout } from "@/components/ErrorCallout";
-import { Button, Divider, Text } from "@tremor/react";
-import Link from "next/link";
-import { StandardAnswer, StandardAnswerCategory } from "@/lib/types";
-import { MagnifyingGlass } from "@phosphor-icons/react";
-import { useState } from "react";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableHead,
   TableRow,
-  TableHeaderCell,
   TableBody,
   TableCell,
-} from "@tremor/react";
+} from "@/components/ui/table";
+
+import Link from "next/link";
+import { StandardAnswer, StandardAnswerCategory } from "@/lib/types";
+import { MagnifyingGlass } from "@phosphor-icons/react";
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { deleteStandardAnswer } from "./lib";
 import { FilterDropdown } from "@/components/search/filtering/FilterDropdown";
 import { FiTag } from "react-icons/fi";
-import { SelectedBubble } from "@/components/search/filtering/Filters";
 import { PageSelector } from "@/components/PageSelector";
 import { CustomCheckbox } from "@/components/CustomCheckbox";
+import Text from "@/components/ui/text";
+import { TableHeader } from "@/components/ui/table";
+import CreateButton from "@/components/ui/createButton";
 
 const NUM_RESULTS_PER_PAGE = 10;
 
@@ -75,7 +77,7 @@ const CategoryBubble = ({
       text-xs
       font-semibold
       text-emphasis
-      bg-hover
+      bg-accent-background-hovered
       rounded-full
       items-center
       w-fit
@@ -122,13 +124,19 @@ const StandardAnswersTableRow = ({
             ? `\`${standardAnswer.keyword}\``
             : standardAnswer.keyword}
         </ReactMarkdown>,
-        <CustomCheckbox
+        <div
           key={`match_regex-${standardAnswer.id}`}
-          checked={standardAnswer.match_regex}
-        />,
+          className="flex items-center"
+        >
+          {standardAnswer.match_regex ? (
+            <span className="text-green-500 font-medium">Yes</span>
+          ) : (
+            <span className="text-gray-500">No</span>
+          )}
+        </div>,
         <ReactMarkdown
           key={`answer-${standardAnswer.id}`}
-          className="prose"
+          className="prose dark:prose-invert"
           remarkPlugins={[remarkGfm]}
         >
           {standardAnswer.answer}
@@ -288,17 +296,15 @@ const StandardAnswersTable = ({
           ))}
         </div>
       </div>
-      <div className="mx-auto">
-        <Table>
-          <TableHead>
+      <div className="flex flex-col w-full mx-auto">
+        <Table className="w-full">
+          <TableHeader>
             <TableRow>
               {columns.map((column) => (
-                <TableHeaderCell key={column.key}>
-                  {column.name}
-                </TableHeaderCell>
+                <TableHead key={column.key}>{column.name}</TableHead>
               ))}
             </TableRow>
-          </TableHead>
+          </TableHeader>
 
           <TableBody>
             {paginatedStandardAnswers.length > 0 ? (
@@ -314,18 +320,20 @@ const StandardAnswersTable = ({
             )}
           </TableBody>
         </Table>
-        {paginatedStandardAnswers.length === 0 && (
-          <div className="flex justify-center">
-            <Text>No matching standard answers found...</Text>
-          </div>
-        )}
+        <div>
+          {paginatedStandardAnswers.length === 0 && (
+            <div className="flex justify-center">
+              <Text>No matching standard answers found...</Text>
+            </div>
+          )}
+        </div>
         {paginatedStandardAnswers.length > 0 && (
           <>
             <div className="mt-4">
               <Text>
                 Ensure that you have added the category to the relevant{" "}
-                <a className="text-link" href="/admin/bot">
-                  Slack bot
+                <a className="text-link" href="/admin/bots">
+                  Slack Bot
                 </a>
                 .
               </Text>
@@ -402,13 +410,12 @@ const Main = () => {
       )}
       <div className="mb-2"></div>
 
-      <Link className="flex mb-3 mt-2 w-fit" href="/admin/standard-answer/new">
-        <Button className="my-auto" color="green" size="xs">
-          New Standard Answer
-        </Button>
-      </Link>
+      <CreateButton
+        href="/admin/standard-answer/new"
+        text="New Standard Answer"
+      />
 
-      <Divider />
+      <Separator />
 
       <div>
         <StandardAnswersTable

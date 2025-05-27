@@ -9,8 +9,7 @@ import { redirect } from "next/navigation";
 import { BackendChatSession } from "../../interfaces";
 import { SharedChatDisplay } from "./SharedChatDisplay";
 import { Persona } from "@/app/admin/assistants/interfaces";
-import { fetchAssistantsSS } from "@/lib/assistants/fetchAssistantsSS";
-import FunctionalHeader from "@/components/chat_search/Header";
+import { constructMiniFiedPersona } from "@/lib/assistantIconUtils";
 
 async function getSharedChat(chatId: string) {
   const response = await fetchSS(
@@ -22,12 +21,14 @@ async function getSharedChat(chatId: string) {
   return null;
 }
 
-export default async function Page({ params }: { params: { chatId: string } }) {
+export default async function Page(props: {
+  params: Promise<{ chatId: string }>;
+}) {
+  const params = await props.params;
   const tasks = [
     getAuthTypeMetadataSS(),
     getCurrentUserSS(),
     getSharedChat(params.chatId),
-    fetchAssistantsSS(),
   ];
 
   // catch cases where the backend is completely unreachable here
@@ -43,7 +44,6 @@ export default async function Page({ params }: { params: { chatId: string } }) {
   const authTypeMetadata = results[0] as AuthTypeMetadata | null;
   const user = results[1] as User | null;
   const chatSession = results[2] as BackendChatSession | null;
-  const [availableAssistants, _] = results[3] as [Persona[], string | null];
 
   const authDisabled = authTypeMetadata?.authType === "disabled";
   if (!authDisabled && !user) {
@@ -54,18 +54,12 @@ export default async function Page({ params }: { params: { chatId: string } }) {
     return redirect("/auth/waiting-on-verification");
   }
 
-  return (
-    <div>
-      <div className="absolute top-0 z-40 w-full">
-        <FunctionalHeader page="shared" user={user} />
-      </div>
-
-      <div className="flex relative bg-background text-default overflow-hidden pt-16 h-screen">
-        <SharedChatDisplay
-          chatSession={chatSession}
-          availableAssistants={availableAssistants}
-        />
-      </div>
-    </div>
+  const persona: Persona = constructMiniFiedPersona(
+    chatSession?.persona_icon_color ?? null,
+    chatSession?.persona_icon_shape ?? null,
+    chatSession?.persona_name ?? "",
+    chatSession?.persona_id ?? 0
   );
+
+  return <SharedChatDisplay chatSession={chatSession} persona={persona} />;
 }

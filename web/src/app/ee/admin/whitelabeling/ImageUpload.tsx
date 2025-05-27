@@ -33,10 +33,20 @@ export function ImageUpload({
               type: "error",
               message: "Only one file can be uploaded at a time",
             });
+            return;
           }
 
-          setTmpImageUrl(URL.createObjectURL(acceptedFiles[0]));
-          setSelectedFile(acceptedFiles[0]);
+          const acceptedFile = acceptedFiles[0];
+          if (acceptedFile === undefined) {
+            setPopup({
+              type: "error",
+              message: "acceptedFile cannot be undefined",
+            });
+            return;
+          }
+
+          setTmpImageUrl(URL.createObjectURL(acceptedFile));
+          setSelectedFile(acceptedFile);
           setDragActive(false);
         }}
         onDragLeave={() => setDragActive(false)}
@@ -53,7 +63,7 @@ export function ImageUpload({
               }
             >
               <input {...getInputProps()} />
-              <b className="text-emphasis">
+              <b className="text-text-darker">
                 Drag and drop a .png or .jpg file, or click to select a file!
               </b>
             </div>
@@ -61,7 +71,11 @@ export function ImageUpload({
             {tmpImageUrl && (
               <div className="mt-4 mb-8">
                 <SubLabel>Uploaded Image:</SubLabel>
-                <img src={tmpImageUrl} className="mt-4 max-w-xs max-h-64" />
+                <img
+                  alt="Uploaded Image"
+                  src={tmpImageUrl}
+                  className="mt-4 max-w-xs max-h-64"
+                />
               </div>
             )}
           </section>

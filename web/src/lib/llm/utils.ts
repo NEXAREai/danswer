@@ -1,11 +1,14 @@
 import { Persona } from "@/app/admin/assistants/interfaces";
-import { LLMProviderDescriptor } from "@/app/admin/configuration/llm/interfaces";
-import { LlmOverride } from "@/lib/hooks";
+import {
+  LLMProviderDescriptor,
+  ModelConfiguration,
+} from "@/app/admin/configuration/llm/interfaces";
+import { LlmDescriptor } from "@/lib/hooks";
 
 export function getFinalLLM(
   llmProviders: LLMProviderDescriptor[],
   persona: Persona | null,
-  llmOverride: LlmOverride | null
+  currentLlm: LlmDescriptor | null
 ): [string, string] {
   const defaultProvider = llmProviders.find(
     (llmProvider) => llmProvider.is_default_provider
@@ -26,9 +29,9 @@ export function getFinalLLM(
     model = persona.llm_model_version_override || model;
   }
 
-  if (llmOverride) {
-    provider = llmOverride.provider || provider;
-    model = llmOverride.modelName || model;
+  if (currentLlm) {
+    provider = currentLlm.provider || provider;
+    model = currentLlm.modelName || model;
   }
 
   return [provider, model];
@@ -37,7 +40,7 @@ export function getFinalLLM(
 export function getLLMProviderOverrideForPersona(
   liveAssistant: Persona,
   llmProviders: LLMProviderDescriptor[]
-): LlmOverride | null {
+): LlmDescriptor | null {
   const overrideProvider = liveAssistant.llm_model_provider_override;
   const overrideModel = liveAssistant.llm_model_version_override;
 
@@ -48,7 +51,9 @@ export function getLLMProviderOverrideForPersona(
   const matchingProvider = llmProviders.find(
     (provider) =>
       (overrideProvider ? provider.name === overrideProvider : true) &&
-      provider.model_names.includes(overrideModel)
+      provider.model_configurations
+        .map((modelConfiguration) => modelConfiguration.name)
+        .includes(overrideModel)
   );
 
   if (matchingProvider) {
@@ -62,53 +67,6 @@ export function getLLMProviderOverrideForPersona(
   return null;
 }
 
-const MODEL_NAMES_SUPPORTING_IMAGE_INPUT = [
-  "gpt-4o",
-  "gpt-4o-mini",
-  "gpt-4-vision-preview",
-  "gpt-4-turbo",
-  "gpt-4-1106-vision-preview",
-  "gpt-4o",
-  "gpt-4o-mini",
-  "gpt-4-vision-preview",
-  "gpt-4-turbo",
-  "gpt-4-1106-vision-preview",
-  "claude-3-5-sonnet-20240620",
-  "claude-3-opus-20240229",
-  "claude-3-sonnet-20240229",
-  "claude-3-haiku-20240307",
-  "anthropic.claude-3-opus-20240229-v1:0",
-  "anthropic.claude-3-sonnet-20240229-v1:0",
-  "anthropic.claude-3-haiku-20240307-v1:0",
-  "anthropic.claude-3-5-sonnet-20240620-v1:0",
-];
-
-export function checkLLMSupportsImageInput(model: string) {
-  return MODEL_NAMES_SUPPORTING_IMAGE_INPUT.some(
-    (modelName) => modelName === model
-  );
-}
-
-const MODEL_PROVIDER_PAIRS_SUPPORTING_IMAGE_OUTPUT = [
-  ["openai", "gpt-4o"],
-  ["openai", "gpt-4o-mini"],
-  ["openai", "gpt-4-vision-preview"],
-  ["openai", "gpt-4-turbo"],
-  ["openai", "gpt-4-1106-vision-preview"],
-  ["azure", "gpt-4o"],
-  ["azure", "gpt-4o-mini"],
-  ["azure", "gpt-4-vision-preview"],
-  ["azure", "gpt-4-turbo"],
-  ["azure", "gpt-4-1106-vision-preview"],
-];
-
-export function checkLLMSupportsImageOutput(provider: string, model: string) {
-  return MODEL_PROVIDER_PAIRS_SUPPORTING_IMAGE_OUTPUT.some(
-    (modelProvider) =>
-      modelProvider[0] === provider && modelProvider[1] === model
-  );
-}
-
 export const structureValue = (
   name: string,
   provider: string,
@@ -117,11 +75,72 @@ export const structureValue = (
   return `${name}__${provider}__${modelName}`;
 };
 
-export const destructureValue = (value: string): LlmOverride => {
+export const parseLlmDescriptor = (value: string): LlmDescriptor => {
   const [displayName, provider, modelName] = value.split("__");
+  if (displayName === undefined) {
+    return { name: "Unknown", provider: "", modelName: "" };
+  }
+
   return {
     name: displayName,
-    provider,
-    modelName,
+    provider: provider ?? "",
+    modelName: modelName ?? "",
   };
+};
+
+export const findProviderForModel = (
+  llmProviders: LLMProviderDescriptor[],
+  modelName: string
+): string => {
+  const provider = llmProviders.find((p) =>
+    p.model_configurations
+      .map((modelConfiguration) => modelConfiguration.name)
+      .includes(modelName)
+  );
+  return provider ? provider.provider : "";
+};
+
+export const findModelInModelConfigurations = (
+  modelConfigurations: ModelConfiguration[],
+  modelName: string
+): ModelConfiguration | null => {
+  return modelConfigurations.find((m) => m.name === modelName) || null;
+};
+
+export const findModelConfiguration = (
+  llmProviders: LLMProviderDescriptor[],
+  modelName: string,
+  providerName: string | null = null
+): ModelConfiguration | null => {
+  if (providerName) {
+    const provider = llmProviders.find((p) => p.name === providerName);
+    return provider
+      ? findModelInModelConfigurations(provider.model_configurations, modelName)
+      : null;
+  }
+
+  for (const provider of llmProviders) {
+    const modelConfiguration = findModelInModelConfigurations(
+      provider.model_configurations,
+      modelName
+    );
+    if (modelConfiguration) {
+      return modelConfiguration;
+    }
+  }
+
+  return null;
+};
+
+export const modelSupportsImageInput = (
+  llmProviders: LLMProviderDescriptor[],
+  modelName: string,
+  providerName: string | null = null
+): boolean => {
+  const modelConfiguration = findModelConfiguration(
+    llmProviders,
+    modelName,
+    providerName
+  );
+  return modelConfiguration?.supports_image_input || false;
 };

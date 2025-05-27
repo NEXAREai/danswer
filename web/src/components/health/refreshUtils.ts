@@ -1,5 +1,3 @@
-import { User } from "@/lib/types";
-
 export interface CustomRefreshTokenResponse {
   access_token: string;
   refresh_token: string;
@@ -25,8 +23,8 @@ export function mockedRefreshToken(): CustomRefreshTokenResponse {
    */
   const mockExp = Date.now() + 3600000; // 1 hour from now in milliseconds
   const data: CustomRefreshTokenResponse = {
-    access_token: "asdf Mock access token",
-    refresh_token: "asdf Mock refresh token",
+    access_token: "Mock access token",
+    refresh_token: "Mock refresh token",
     session: { exp: mockExp },
     userinfo: {
       sub: "Mock email",
@@ -34,7 +32,7 @@ export function mockedRefreshToken(): CustomRefreshTokenResponse {
       givenName: "Mock name",
       fullName: "Mock name",
       userId: "Mock User ID",
-      email: "email@danswer.ai",
+      email: "email@onyx.app",
     },
   };
   return data;
@@ -42,14 +40,21 @@ export function mockedRefreshToken(): CustomRefreshTokenResponse {
 
 export async function refreshToken(
   customRefreshUrl: string
-): Promise<CustomRefreshTokenResponse> {
+): Promise<CustomRefreshTokenResponse | null> {
   try {
     console.debug("Sending request to custom refresh URL");
-    const url = new URL(customRefreshUrl);
+    // support both absolute and relative
+    const url = customRefreshUrl.startsWith("http")
+      ? new URL(customRefreshUrl)
+      : new URL(customRefreshUrl, window.location.origin);
     url.searchParams.append("info", "json");
     url.searchParams.append("access_token_refresh_interval", "3600");
 
     const response = await fetch(url.toString());
+    if (!response.ok) {
+      console.error(`Failed to refresh token: ${await response.text()}`);
+      return null;
+    }
 
     return await response.json();
   } catch (error) {

@@ -4,12 +4,10 @@ import {
   Table,
   TableHead,
   TableRow,
-  TableHeaderCell,
   TableBody,
   TableCell,
-  Title,
-  Text,
-} from "@tremor/react";
+} from "@/components/ui/table";
+import Title from "@/components/ui/title";
 import { DeleteButton } from "@/components/DeleteButton";
 import { deleteTokenRateLimit, updateTokenRateLimit } from "./lib";
 import { ThreeDotsLoader } from "@/components/Loading";
@@ -17,6 +15,8 @@ import { TokenRateLimitDisplay } from "./types";
 import { errorHandlingFetcher } from "@/lib/fetcher";
 import useSWR, { mutate } from "swr";
 import { CustomCheckbox } from "@/components/CustomCheckbox";
+import { TableHeader } from "@/components/ui/table";
+import Text from "@/components/ui/text";
 
 type TokenRateLimitTableArgs = {
   tokenRateLimits: TokenRateLimitDisplay[];
@@ -36,7 +36,9 @@ export const TokenRateLimitTable = ({
   isAdmin,
 }: TokenRateLimitTableArgs) => {
   const shouldRenderGroupName = () =>
-    tokenRateLimits.length > 0 && tokenRateLimits[0].group_name !== undefined;
+    tokenRateLimits.length > 0 &&
+    tokenRateLimits[0] !== undefined &&
+    tokenRateLimits[0].group_name !== undefined;
 
   const handleEnabledChange = (id: number) => {
     const tokenRateLimit = tokenRateLimits.find(
@@ -82,19 +84,19 @@ export const TokenRateLimitTable = ({
         <Text className="my-2">{description}</Text>
       )}
       <Table
-        className={`overflow-visible ${!hideHeading && "my-8"} [&_td]:text-center [&_th]:text-center`}
+        className={`overflow-visible ${
+          !hideHeading && "my-8"
+        } [&_td]:text-center [&_th]:text-center`}
       >
-        <TableHead>
+        <TableHeader>
           <TableRow>
-            <TableHeaderCell>Enabled</TableHeaderCell>
-            {shouldRenderGroupName() && (
-              <TableHeaderCell>Group Name</TableHeaderCell>
-            )}
-            <TableHeaderCell>Time Window (Hours)</TableHeaderCell>
-            <TableHeaderCell>Token Budget (Thousands)</TableHeaderCell>
-            {isAdmin && <TableHeaderCell>Delete</TableHeaderCell>}
+            <TableHead>Enabled</TableHead>
+            {shouldRenderGroupName() && <TableHead>Group Name</TableHead>}
+            <TableHead>Time Window (Hours)</TableHead>
+            <TableHead>Token Budget (Thousands)</TableHead>
+            {isAdmin && <TableHead>Delete</TableHead>}
           </TableRow>
-        </TableHead>
+        </TableHeader>
         <TableBody>
           {tokenRateLimits.map((tokenRateLimit) => {
             return (
@@ -109,7 +111,7 @@ export const TokenRateLimitTable = ({
                       }
                       className={`px-1 py-0.5 rounded select-none w-24 ${
                         isAdmin
-                          ? "hover:bg-hover-light cursor-pointer"
+                          ? "hover:bg-accent-background cursor-pointer"
                           : "opacity-50"
                       }`}
                     >
@@ -131,7 +133,7 @@ export const TokenRateLimitTable = ({
                   </div>
                 </TableCell>
                 {shouldRenderGroupName() && (
-                  <TableCell className="font-bold text-emphasis">
+                  <TableCell className="font-bold text-text-darker">
                     {tokenRateLimit.group_name}
                   </TableCell>
                 )}
@@ -176,7 +178,10 @@ export const GenericTokenRateLimitTable = ({
   responseMapper?: (data: any) => TokenRateLimitDisplay[];
   isAdmin?: boolean;
 }) => {
-  const { data, isLoading, error } = useSWR(fetchUrl, errorHandlingFetcher);
+  const { data, isLoading, error } = useSWR<TokenRateLimitDisplay[]>(
+    fetchUrl,
+    errorHandlingFetcher
+  );
 
   if (isLoading) {
     return <ThreeDotsLoader />;
@@ -193,7 +198,7 @@ export const GenericTokenRateLimitTable = ({
 
   return (
     <TokenRateLimitTable
-      tokenRateLimits={processedData}
+      tokenRateLimits={processedData ?? []}
       fetchUrl={fetchUrl}
       title={title}
       description={description}

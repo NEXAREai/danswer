@@ -5,14 +5,16 @@ from uuid import uuid4
 
 import requests
 
-from danswer.connectors.models import InputType
-from danswer.db.enums import AccessType
-from danswer.db.enums import ConnectorCredentialPairStatus
-from danswer.db.enums import TaskStatus
-from danswer.server.documents.models import CCPairPruningTask
-from danswer.server.documents.models import ConnectorCredentialPairIdentifier
-from danswer.server.documents.models import ConnectorIndexingStatus
-from danswer.server.documents.models import DocumentSource
+import generated.onyx_openapi_client.onyx_openapi_client as api
+from onyx.connectors.models import InputType
+from onyx.db.enums import AccessType
+from onyx.db.enums import ConnectorCredentialPairStatus
+from onyx.server.documents.models import CCPairFullInfo
+from onyx.server.documents.models import ConnectorCredentialPairIdentifier
+from onyx.server.documents.models import ConnectorIndexingStatus
+from onyx.server.documents.models import DocumentSource
+from onyx.server.documents.models import DocumentSyncStatus
+from tests.integration.common_utils.config import api_config
 from tests.integration.common_utils.constants import API_SERVER_URL
 from tests.integration.common_utils.constants import GENERAL_HEADERS
 from tests.integration.common_utils.constants import MAX_DELAY
@@ -32,22 +34,27 @@ def _cc_pair_creator(
 ) -> DATestCCPair:
     name = f"{name}-cc-pair" if name else f"test-cc-pair-{uuid4()}"
 
-    request = {
-        "name": name,
-        "access_type": access_type,
-        "groups": groups or [],
-    }
+    with api.ApiClient(api_config) as api_client:
+        api_instance = api.DefaultApi(api_client)
+        connector_credential_pair_metadata = api.ConnectorCredentialPairMetadata(
+            name=name, access_type=access_type, groups=groups or []
+        )
+        headers = (
+            user_performing_action.headers
+            if user_performing_action
+            else GENERAL_HEADERS
+        )
+        api_response: api.StatusResponseInt = (
+            api_instance.associate_credential_to_connector(
+                connector_id,
+                credential_id,
+                connector_credential_pair_metadata,
+                _headers=headers,
+            )
+        )
 
-    response = requests.put(
-        url=f"{API_SERVER_URL}/manage/connector/{connector_id}/credential/{credential_id}",
-        json=request,
-        headers=user_performing_action.headers
-        if user_performing_action
-        else GENERAL_HEADERS,
-    )
-    response.raise_for_status()
     return DATestCCPair(
-        id=response.json()["data"],
+        id=int(api_response.data),
         name=name,
         connector_id=connector_id,
         credential_id=credential_id,
@@ -67,15 +74,17 @@ class CCPairManager:
         connector_specific_config: dict[str, Any] | None = None,
         credential_json: dict[str, Any] | None = None,
         user_performing_action: DATestUser | None = None,
+        refresh_freq: int | None = None,
     ) -> DATestCCPair:
         connector = ConnectorManager.create(
             name=name,
             source=source,
             input_type=input_type,
             connector_specific_config=connector_specific_config,
-            is_public=(access_type == AccessType.PUBLIC),
+            access_type=access_type,
             groups=groups,
             user_performing_action=user_performing_action,
+            refresh_freq=refresh_freq,
         )
         credential = CredentialManager.create(
             credential_json=credential_json,
@@ -85,7 +94,7 @@ class CCPairManager:
             groups=groups,
             user_performing_action=user_performing_action,
         )
-        return _cc_pair_creator(
+        cc_pair = _cc_pair_creator(
             connector_id=connector.id,
             credential_id=credential.id,
             name=name,
@@ -93,6 +102,7 @@ class CCPairManager:
             groups=groups,
             user_performing_action=user_performing_action,
         )
+        return cc_pair
 
     @staticmethod
     def create(
@@ -103,7 +113,7 @@ class CCPairManager:
         groups: list[int] | None = None,
         user_performing_action: DATestUser | None = None,
     ) -> DATestCCPair:
-        return _cc_pair_creator(
+        cc_pair = _cc_pair_creator(
             connector_id=connector_id,
             credential_id=credential_id,
             name=name,
@@ -111,6 +121,7 @@ class CCPairManager:
             groups=groups,
             user_performing_action=user_performing_action,
         )
+        return cc_pair
 
     @staticmethod
     def pause_cc_pair(
@@ -120,9 +131,11 @@ class CCPairManager:
         result = requests.put(
             url=f"{API_SERVER_URL}/manage/admin/cc-pair/{cc_pair.id}/status",
             json={"status": "PAUSED"},
-            headers=user_performing_action.headers
-            if user_performing_action
-            else GENERAL_HEADERS,
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
         )
         result.raise_for_status()
 
@@ -138,22 +151,43 @@ class CCPairManager:
         result = requests.post(
             url=f"{API_SERVER_URL}/manage/admin/deletion-attempt",
             json=cc_pair_identifier.model_dump(),
-            headers=user_performing_action.headers
-            if user_performing_action
-            else GENERAL_HEADERS,
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
         )
         result.raise_for_status()
 
     @staticmethod
-    def get_one(
+    def get_single(
+        cc_pair_id: int,
+        user_performing_action: DATestUser | None = None,
+    ) -> CCPairFullInfo | None:
+        response = requests.get(
+            f"{API_SERVER_URL}/manage/admin/cc-pair/{cc_pair_id}",
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
+        )
+        response.raise_for_status()
+        cc_pair_json = response.json()
+        return CCPairFullInfo(**cc_pair_json)
+
+    @staticmethod
+    def get_indexing_status_by_id(
         cc_pair_id: int,
         user_performing_action: DATestUser | None = None,
     ) -> ConnectorIndexingStatus | None:
         response = requests.get(
             f"{API_SERVER_URL}/manage/admin/connector/indexing-status",
-            headers=user_performing_action.headers
-            if user_performing_action
-            else GENERAL_HEADERS,
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
         )
         response.raise_for_status()
         for cc_pair_json in response.json():
@@ -164,14 +198,16 @@ class CCPairManager:
         return None
 
     @staticmethod
-    def get_all(
+    def get_indexing_statuses(
         user_performing_action: DATestUser | None = None,
     ) -> list[ConnectorIndexingStatus]:
         response = requests.get(
             f"{API_SERVER_URL}/manage/admin/connector/indexing-status",
-            headers=user_performing_action.headers
-            if user_performing_action
-            else GENERAL_HEADERS,
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
         )
         response.raise_for_status()
         return [ConnectorIndexingStatus(**cc_pair) for cc_pair in response.json()]
@@ -182,7 +218,7 @@ class CCPairManager:
         verify_deleted: bool = False,
         user_performing_action: DATestUser | None = None,
     ) -> None:
-        all_cc_pairs = CCPairManager.get_all(user_performing_action)
+        all_cc_pairs = CCPairManager.get_indexing_statuses(user_performing_action)
         for retrieved_cc_pair in all_cc_pairs:
             if retrieved_cc_pair.cc_pair_id == cc_pair.id:
                 if verify_deleted:
@@ -204,8 +240,108 @@ class CCPairManager:
             raise ValueError(f"CC pair {cc_pair.id} not found")
 
     @staticmethod
-    def wait_for_indexing(
-        cc_pair_test: DATestCCPair,
+    def run_once(
+        cc_pair: DATestCCPair,
+        from_beginning: bool,
+        user_performing_action: DATestUser | None = None,
+    ) -> None:
+        body = {
+            "connector_id": cc_pair.connector_id,
+            "credential_ids": [cc_pair.credential_id],
+            "from_beginning": from_beginning,
+        }
+        result = requests.post(
+            url=f"{API_SERVER_URL}/manage/admin/connector/run-once",
+            json=body,
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
+        )
+        result.raise_for_status()
+
+    @staticmethod
+    def wait_for_indexing_inactive(
+        cc_pair: DATestCCPair,
+        timeout: float = MAX_DELAY,
+        user_performing_action: DATestUser | None = None,
+    ) -> None:
+        """wait for the number of docs to be indexed on the connector.
+        This is used to test pausing a connector in the middle of indexing and
+        terminating that indexing."""
+        print(f"Indexing wait for inactive starting: cc_pair={cc_pair.id}")
+        start = time.monotonic()
+        while True:
+            fetched_cc_pairs = CCPairManager.get_indexing_statuses(
+                user_performing_action
+            )
+            for fetched_cc_pair in fetched_cc_pairs:
+                if fetched_cc_pair.cc_pair_id != cc_pair.id:
+                    continue
+
+                if fetched_cc_pair.in_progress:
+                    continue
+
+                print(f"Indexing is inactive: cc_pair={cc_pair.id}")
+                return
+
+            elapsed = time.monotonic() - start
+            if elapsed > timeout:
+                raise TimeoutError(
+                    f"Indexing wait for inactive timed out: cc_pair={cc_pair.id} timeout={timeout}s"
+                )
+
+            print(
+                f"Indexing wait for inactive still waiting: cc_pair={cc_pair.id} elapsed={elapsed:.2f} timeout={timeout}s"
+            )
+            time.sleep(5)
+
+    @staticmethod
+    def wait_for_indexing_in_progress(
+        cc_pair: DATestCCPair,
+        timeout: float = MAX_DELAY,
+        num_docs: int = 16,
+        user_performing_action: DATestUser | None = None,
+    ) -> None:
+        """wait for the number of docs to be indexed on the connector.
+        This is used to test pausing a connector in the middle of indexing and
+        terminating that indexing."""
+        start = time.monotonic()
+        while True:
+            fetched_cc_pairs = CCPairManager.get_indexing_statuses(
+                user_performing_action
+            )
+            for fetched_cc_pair in fetched_cc_pairs:
+                if fetched_cc_pair.cc_pair_id != cc_pair.id:
+                    continue
+
+                if not fetched_cc_pair.in_progress:
+                    continue
+
+                if fetched_cc_pair.docs_indexed >= num_docs:
+                    print(
+                        "Indexed at least the requested number of docs: "
+                        f"cc_pair={cc_pair.id} "
+                        f"docs_indexed={fetched_cc_pair.docs_indexed} "
+                        f"num_docs={num_docs}"
+                    )
+                    return
+
+            elapsed = time.monotonic() - start
+            if elapsed > timeout:
+                raise TimeoutError(
+                    f"Indexing in progress wait timed out: cc_pair={cc_pair.id} timeout={timeout}s"
+                )
+
+            print(
+                f"Indexing in progress waiting: cc_pair={cc_pair.id} elapsed={elapsed:.2f} timeout={timeout}s"
+            )
+            time.sleep(5)
+
+    @staticmethod
+    def wait_for_indexing_completion(
+        cc_pair: DATestCCPair,
         after: datetime,
         timeout: float = MAX_DELAY,
         user_performing_action: DATestUser | None = None,
@@ -213,23 +349,31 @@ class CCPairManager:
         """after: Wait for an indexing success time after this time"""
         start = time.monotonic()
         while True:
-            cc_pairs = CCPairManager.get_all(user_performing_action)
-            for cc_pair in cc_pairs:
-                if cc_pair.cc_pair_id != cc_pair_test.id:
+            fetched_cc_pairs = CCPairManager.get_indexing_statuses(
+                user_performing_action
+            )
+            for fetched_cc_pair in fetched_cc_pairs:
+                if fetched_cc_pair.cc_pair_id != cc_pair.id:
                     continue
 
-                if cc_pair.last_success and cc_pair.last_success > after:
-                    print(f"cc_pair {cc_pair_test.id} indexing complete.")
+                if fetched_cc_pair.in_progress:
+                    continue
+
+                if (
+                    fetched_cc_pair.last_success
+                    and fetched_cc_pair.last_success > after
+                ):
+                    print(f"Indexing complete: cc_pair={cc_pair.id}")
                     return
 
             elapsed = time.monotonic() - start
             if elapsed > timeout:
                 raise TimeoutError(
-                    f"CC pair indexing was not completed within {timeout} seconds"
+                    f"Indexing wait timed out: cc_pair={cc_pair.id} timeout={timeout}s"
                 )
 
             print(
-                f"Waiting for CC indexing to complete. elapsed={elapsed:.2f} timeout={timeout}"
+                f"Indexing wait for completion: cc_pair={cc_pair.id} elapsed={elapsed:.2f} timeout={timeout}s"
             )
             time.sleep(5)
 
@@ -240,29 +384,42 @@ class CCPairManager:
     ) -> None:
         result = requests.post(
             url=f"{API_SERVER_URL}/manage/admin/cc-pair/{cc_pair.id}/prune",
-            headers=user_performing_action.headers
-            if user_performing_action
-            else GENERAL_HEADERS,
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
         )
         result.raise_for_status()
 
     @staticmethod
-    def get_prune_task(
+    def last_pruned(
         cc_pair: DATestCCPair,
         user_performing_action: DATestUser | None = None,
-    ) -> CCPairPruningTask:
+    ) -> datetime | None:
         response = requests.get(
-            url=f"{API_SERVER_URL}/manage/admin/cc-pair/{cc_pair.id}/prune",
-            headers=user_performing_action.headers
-            if user_performing_action
-            else GENERAL_HEADERS,
+            url=f"{API_SERVER_URL}/manage/admin/cc-pair/{cc_pair.id}/last_pruned",
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
         )
         response.raise_for_status()
-        return CCPairPruningTask(**response.json())
+        response_str = response.json()
+
+        # If the response itself is a datetime string, parse it
+        if not isinstance(response_str, str):
+            return None
+
+        try:
+            return datetime.fromisoformat(response_str)
+        except ValueError:
+            return None
 
     @staticmethod
     def wait_for_prune(
-        cc_pair_test: DATestCCPair,
+        cc_pair: DATestCCPair,
         after: datetime,
         timeout: float = MAX_DELAY,
         user_performing_action: DATestUser | None = None,
@@ -270,16 +427,10 @@ class CCPairManager:
         """after: The task register time must be after this time."""
         start = time.monotonic()
         while True:
-            task = CCPairManager.get_prune_task(cc_pair_test, user_performing_action)
-            if not task:
-                raise ValueError("Prune task not found.")
-
-            if not task.register_time or task.register_time < after:
-                raise ValueError("Prune task register time is too early.")
-
-            if task.status == TaskStatus.SUCCESS:
-                # Pruning succeeded
-                return
+            last_pruned = CCPairManager.last_pruned(cc_pair, user_performing_action)
+            if last_pruned and last_pruned > after:
+                print(f"Pruning complete: cc_pair={cc_pair.id}")
+                break
 
             elapsed = time.monotonic() - start
             if elapsed > timeout:
@@ -293,17 +444,240 @@ class CCPairManager:
             time.sleep(5)
 
     @staticmethod
-    def wait_for_deletion_completion(
+    def sync(
+        cc_pair: DATestCCPair,
         user_performing_action: DATestUser | None = None,
     ) -> None:
+        """This function triggers a permission sync.
+        Naming / intent of this function probably could use improvement, but currently it's letting
+        409 Conflict pass through since if it's running that's what we were trying to do anyway.
+        """
+        result = requests.post(
+            url=f"{API_SERVER_URL}/manage/admin/cc-pair/{cc_pair.id}/sync-permissions",
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
+        )
+        if result.status_code != 409:
+            result.raise_for_status()
+
+        group_sync_result = requests.post(
+            url=f"{API_SERVER_URL}/manage/admin/cc-pair/{cc_pair.id}/sync-groups",
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
+        )
+        if group_sync_result.status_code != 409:
+            group_sync_result.raise_for_status()
+        time.sleep(2)
+
+    @staticmethod
+    def get_doc_sync_task(
+        cc_pair: DATestCCPair,
+        user_performing_action: DATestUser | None = None,
+    ) -> datetime | None:
+        doc_sync_response = requests.get(
+            url=f"{API_SERVER_URL}/manage/admin/cc-pair/{cc_pair.id}/sync-permissions",
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
+        )
+        doc_sync_response.raise_for_status()
+        doc_sync_response_str = doc_sync_response.json()
+
+        # If the response itself is a datetime string, parse it
+        if not isinstance(doc_sync_response_str, str):
+            return None
+
+        try:
+            return datetime.fromisoformat(doc_sync_response_str)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def get_group_sync_task(
+        cc_pair: DATestCCPair,
+        user_performing_action: DATestUser | None = None,
+    ) -> datetime | None:
+        group_sync_response = requests.get(
+            url=f"{API_SERVER_URL}/manage/admin/cc-pair/{cc_pair.id}/sync-groups",
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
+        )
+        group_sync_response.raise_for_status()
+        group_sync_response_str = group_sync_response.json()
+
+        # If the response itself is a datetime string, parse it
+        if not isinstance(group_sync_response_str, str):
+            return None
+
+        try:
+            return datetime.fromisoformat(group_sync_response_str)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def get_doc_sync_statuses(
+        cc_pair: DATestCCPair,
+        user_performing_action: DATestUser | None = None,
+    ) -> list[DocumentSyncStatus]:
+        response = requests.get(
+            url=f"{API_SERVER_URL}/manage/admin/cc-pair/{cc_pair.id}/get-docs-sync-status",
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
+        )
+        response.raise_for_status()
+        doc_sync_statuses: list[DocumentSyncStatus] = []
+        for doc_sync_status in response.json():
+            last_synced = doc_sync_status.get("last_synced")
+            if last_synced:
+                last_synced = datetime.fromisoformat(last_synced)
+
+            last_modified = doc_sync_status.get("last_modified")
+            if last_modified:
+                last_modified = datetime.fromisoformat(last_modified)
+
+            doc_sync_statuses.append(
+                DocumentSyncStatus(
+                    doc_id=doc_sync_status["doc_id"],
+                    last_synced=last_synced,
+                    last_modified=last_modified,
+                )
+            )
+
+        return doc_sync_statuses
+
+    @staticmethod
+    def wait_for_sync(
+        cc_pair: DATestCCPair,
+        after: datetime,
+        timeout: float = MAX_DELAY,
+        number_of_updated_docs: int = 0,
+        user_performing_action: DATestUser | None = None,
+        # Sometimes waiting for a group sync is not necessary
+        should_wait_for_group_sync: bool = True,
+        # Sometimes waiting for a vespa sync is not necessary
+        should_wait_for_vespa_sync: bool = True,
+    ) -> None:
+        """after: The task register time must be after this time."""
+        doc_synced = False
+        group_synced = False
         start = time.monotonic()
         while True:
-            cc_pairs = CCPairManager.get_all(user_performing_action)
-            if all(
-                cc_pair.cc_pair_status != ConnectorCredentialPairStatus.DELETING
-                for cc_pair in cc_pairs
-            ):
-                return
+            # We are treating both syncs as part of one larger permission sync job
+            doc_last_synced = CCPairManager.get_doc_sync_task(
+                cc_pair, user_performing_action
+            )
+            group_last_synced = CCPairManager.get_group_sync_task(
+                cc_pair, user_performing_action
+            )
+
+            if not doc_synced and doc_last_synced and doc_last_synced > after:
+                print(f"doc_last_synced: {doc_last_synced}")
+                print(f"sync command start time: {after}")
+                print(f"permission sync complete: cc_pair={cc_pair.id}")
+                doc_synced = True
+
+            if not group_synced and group_last_synced and group_last_synced > after:
+                print(f"group_last_synced: {group_last_synced}")
+                print(f"sync command start time: {after}")
+                print(f"group sync complete: cc_pair={cc_pair.id}")
+                group_synced = True
+
+            if doc_synced and (group_synced or not should_wait_for_group_sync):
+                break
+
+            elapsed = time.monotonic() - start
+            if elapsed > timeout:
+                raise TimeoutError(
+                    f"Permission sync was not completed within {timeout} seconds"
+                )
+
+            print(
+                f"Waiting for CC sync to complete. elapsed={elapsed:.2f} timeout={timeout}"
+            )
+            time.sleep(5)
+
+        # TODO: remove this sleep,
+        # this shouldnt be necessary but something is off with the timing for the sync jobs
+        time.sleep(5)
+
+        if not should_wait_for_vespa_sync:
+            return
+
+        print("waiting for vespa sync")
+        # wait for the vespa sync to complete once the permission sync is complete
+        start = time.monotonic()
+        while True:
+            doc_sync_statuses = CCPairManager.get_doc_sync_statuses(
+                cc_pair=cc_pair,
+                user_performing_action=user_performing_action,
+            )
+            synced_docs = 0
+            for doc_sync_status in doc_sync_statuses:
+                if (
+                    doc_sync_status.last_synced is not None
+                    and doc_sync_status.last_modified is not None
+                    and doc_sync_status.last_synced >= doc_sync_status.last_modified
+                    and doc_sync_status.last_synced >= after
+                    and doc_sync_status.last_modified >= after
+                ):
+                    synced_docs += 1
+
+            if synced_docs >= number_of_updated_docs:
+                print(f"all docs synced: cc_pair={cc_pair.id}")
+                break
+
+            elapsed = time.monotonic() - start
+            if elapsed > timeout:
+                raise TimeoutError(
+                    f"Vespa sync was not completed within {timeout} seconds"
+                )
+
+            print(
+                f"Waiting for vespa sync to complete. elapsed={elapsed:.2f} timeout={timeout}"
+            )
+            time.sleep(5)
+
+    @staticmethod
+    def wait_for_deletion_completion(
+        cc_pair_id: int | None = None,
+        user_performing_action: DATestUser | None = None,
+    ) -> None:
+        """if cc_pair_id is not specified, just waits until no connectors are in the deleting state.
+        if cc_pair_id is specified, checks to ensure the specific cc_pair_id is gone.
+        We had a bug where the connector was paused in the middle of deleting, so specifying the
+        cc_pair_id is good to do."""
+        start = time.monotonic()
+        while True:
+            cc_pairs = CCPairManager.get_indexing_statuses(user_performing_action)
+            if cc_pair_id:
+                found = False
+                for cc_pair in cc_pairs:
+                    if cc_pair.cc_pair_id == cc_pair_id:
+                        found = True
+                        break
+
+                if not found:
+                    return
+            else:
+                if all(
+                    cc_pair.cc_pair_status != ConnectorCredentialPairStatus.DELETING
+                    for cc_pair in cc_pairs
+                ):
+                    return
 
             if time.monotonic() - start > MAX_DELAY:
                 raise TimeoutError(

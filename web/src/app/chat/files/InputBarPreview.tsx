@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { ChatFileType, FileDescriptor } from "../interfaces";
+import { FileDescriptor } from "../interfaces";
 
 import { FiX, FiLoader, FiFileText } from "react-icons/fi";
 import { InputBarPreviewImage } from "./images/InputBarPreviewImage";
-import { Tooltip } from "@/components/tooltip/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 function DeleteButton({ onDelete }: { onDelete: () => void }) {
   return (
@@ -15,7 +20,7 @@ function DeleteButton({ onDelete }: { onDelete: () => void }) {
         -right-1
         cursor-pointer
         border-none
-        bg-hover
+        bg-accent-background-hovered
         p-.5
         rounded-full
         z-10
@@ -39,7 +44,7 @@ export function InputBarPreviewImageProvider({
 
   return (
     <div
-      className="h-10 relative"
+      className="h-6 relative"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -106,27 +111,28 @@ export function InputBarPreview({
             z-0
           "
         >
-          <FiLoader className="animate-spin text-white" />
+          <FiLoader size={12} className="animate-spin text-white" />
         </div>
       )}
       <div
         className={`
         flex
         items-center
-        p-2
-        bg-hover
+        px-2
+        bg-accent-background-hovered
         border
+        gap-x-1.5
         border-border
         rounded-md
         box-border
-        h-10
+        h-8
       `}
       >
         <div className="flex-shrink-0">
           <div
             className="
-            w-6
-            h-6
+            w-5
+            h-5
             bg-document
             flex
             items-center
@@ -134,26 +140,31 @@ export function InputBarPreview({
             rounded-md
           "
           >
-            <FiFileText className="w-4 h-4 text-white" />
+            <FiFileText size={12} className="text-white" />
           </div>
         </div>
-        <div className="ml-2 relative">
-          <Tooltip content={file.name} side="top" align="start">
-            <div
-              ref={fileNameRef}
-              className={`font-medium text-sm line-clamp-1 break-all ellipses max-w-48`}
-            >
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div
+                ref={fileNameRef}
+                className={`font-medium text-sm line-clamp-1 break-all ellipses max-w-48`}
+              >
+                {file.name}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" align="start">
               {file.name}
-            </div>
+            </TooltipContent>
           </Tooltip>
-        </div>
+        </TooltipProvider>
         <button
           onClick={onDelete}
           className="
             cursor-pointer
             border-none
-            bg-hover
-            p-1
+            bg-accent-background-hovered
             rounded-full
             z-10
           "

@@ -1,9 +1,12 @@
 import React, { useState } from "react";
-import { Button, Card } from "@tremor/react";
+import { Button } from "@/components/ui/button";
 import { ValidSources } from "@/lib/types";
 import { FaAccusoft } from "react-icons/fa";
 import { submitCredential } from "@/components/admin/connectors/CredentialForm";
-import { TextFormField } from "@/components/admin/connectors/Field";
+import {
+  BooleanFormField,
+  TextFormField,
+} from "@/components/admin/connectors/Field";
 import { Form, Formik, FormikHelpers } from "formik";
 import { PopupSpec } from "@/components/admin/connectors/Popup";
 import { getSourceDocLink } from "@/lib/sources";
@@ -14,8 +17,6 @@ import {
   credentialTemplates,
   getDisplayNameForCredentialKey,
 } from "@/lib/connectors/credentials";
-import { getCurrentUser } from "@/lib/user";
-import { User, UserRole } from "@/lib/types";
 import { PlusCircleIcon } from "../../icons/icons";
 import { GmailMain } from "@/app/admin/connectors/[connector]/pages/gmail/GmailPage";
 import { ActionType, dictionaryType } from "../types";
@@ -27,6 +28,7 @@ import {
   IsPublicGroupSelector,
 } from "@/components/IsPublicGroupSelector";
 import { useUser } from "@/components/user/UserProvider";
+import CardSection from "@/components/admin/CardSection";
 
 const CreateButton = ({
   onClick,
@@ -41,15 +43,12 @@ const CreateButton = ({
 }) => (
   <div className="flex justify-end w-full">
     <Button
-      className="enabled:cursor-pointer disabled:cursor-not-allowed disabled:bg-blue-200 bg-blue-400 flex gap-x-1 items-center text-white py-2.5 px-3.5 text-sm font-regular rounded-sm"
       onClick={onClick}
       type="button"
       disabled={isSubmitting || (!isAdmin && groups.length === 0)}
     >
-      <div className="flex items-center gap-x-1">
-        <PlusCircleIcon size={16} className="text-indigo-100" />
-        Create
-      </div>
+      <PlusCircleIcon className="h-4 w-4" />
+      Create
     </Button>
   </div>
 );
@@ -95,10 +94,7 @@ export default function CreateCredential({
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const isPaidEnterpriseFeaturesEnabled = usePaidEnterpriseFeaturesEnabled();
 
-  const { isLoadingUser, isAdmin } = useUser();
-  if (isLoadingUser) {
-    return <></>;
-  }
+  const { isAdmin } = useUser();
 
   const handleSubmit = async (
     values: formType,
@@ -118,9 +114,15 @@ export default function CreateCredential({
 
     const { name, is_public, groups, ...credentialValues } = values;
 
+    const filteredCredentialValues = Object.fromEntries(
+      Object.entries(credentialValues).filter(
+        ([_, value]) => value !== null && value !== ""
+      )
+    );
+
     try {
       const response = await submitCredential({
-        credential_json: credentialValues,
+        credential_json: filteredCredentialValues,
         admin_public: true,
         curator_public: is_public,
         groups: groups,
@@ -167,7 +169,7 @@ export default function CreateCredential({
   }
 
   if (sourceType == "google_drive") {
-    return <GDriveMain />;
+    return <GDriveMain setPopup={setPopup} />;
   }
 
   const credentialTemplate: dictionaryType = credentialTemplates[sourceType];
@@ -186,7 +188,7 @@ export default function CreateCredential({
       onSubmit={() => {}} // This will be overridden by our custom submit handlers
     >
       {(formikProps) => (
-        <Form>
+        <Form className="w-full flex items-stretch">
           {!hideSource && (
             <p className="text-sm">
               Check our
@@ -201,28 +203,39 @@ export default function CreateCredential({
               for information on setting up this connector.
             </p>
           )}
-          <Card className="!border-0 mt-4 flex flex-col gap-y-6">
+          <CardSection className="w-full items-start dark:bg-neutral-900 mt-4 flex flex-col gap-y-6">
             <TextFormField
               name="name"
               placeholder="(Optional) credential name.."
               label="Name:"
             />
-            {Object.entries(credentialTemplate).map(([key, val]) => (
-              <TextFormField
-                key={key}
-                name={key}
-                placeholder={val}
-                label={getDisplayNameForCredentialKey(key)}
-                type={
-                  key.toLowerCase().includes("token") ||
-                  key.toLowerCase().includes("password")
-                    ? "password"
-                    : "text"
-                }
-              />
-            ))}
+            {Object.entries(credentialTemplate).map(([key, val]) => {
+              if (typeof val === "boolean") {
+                return (
+                  <BooleanFormField
+                    key={key}
+                    name={key}
+                    label={getDisplayNameForCredentialKey(key)}
+                  />
+                );
+              }
+              return (
+                <TextFormField
+                  key={key}
+                  name={key}
+                  placeholder={val}
+                  label={getDisplayNameForCredentialKey(key)}
+                  type={
+                    key.toLowerCase().includes("token") ||
+                    key.toLowerCase().includes("password")
+                      ? "password"
+                      : "text"
+                  }
+                />
+              );
+            })}
             {!swapConnector && (
-              <div className="mt-4 flex flex-col sm:flex-row justify-between items-end">
+              <div className="mt-4 flex w-full flex-col sm:flex-row justify-between items-end">
                 <div className="w-full sm:w-3/4 mb-4 sm:mb-0">
                   {isPaidEnterpriseFeaturesEnabled && (
                     <div className="flex flex-col items-start">
@@ -254,7 +267,7 @@ export default function CreateCredential({
                 </div>
               </div>
             )}
-          </Card>
+          </CardSection>
           {swapConnector && (
             <div className="flex gap-x-4 w-full mt-8 justify-end">
               <Button

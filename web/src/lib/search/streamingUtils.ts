@@ -11,7 +11,7 @@ const processSingleChunk = <T extends NonEmptyObject>(
     // every complete chunk should be valid JSON
     const chunkJson = JSON.parse(completeChunk);
     return [chunkJson, null];
-  } catch (err) {
+  } catch {
     // if it's not valid JSON, then it's probably an incomplete chunk
     return [null, completeChunk];
   }
@@ -79,12 +79,18 @@ export async function* handleStream<T extends NonEmptyObject>(
 }
 
 export async function* handleSSEStream<T extends PacketType>(
-  streamingResponse: Response
+  streamingResponse: Response,
+  signal?: AbortSignal
 ): AsyncGenerator<T, void, unknown> {
   const reader = streamingResponse.body?.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-
+  if (signal) {
+    signal.addEventListener("abort", () => {
+      console.log("aborting");
+      reader?.cancel();
+    });
+  }
   while (true) {
     const rawChunk = await reader?.read();
     if (!rawChunk) {
@@ -130,7 +136,6 @@ export async function* handleSSEStream<T extends PacketType>(
       const data = JSON.parse(buffer) as T;
       yield data;
     } catch (error) {
-      console.log("Problematic remaining buffer:", buffer);
       console.error("Error parsing remaining buffer:", error);
     }
   }

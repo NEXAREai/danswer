@@ -8,14 +8,21 @@ import {
   FiGlobe,
 } from "react-icons/fi";
 import { FeedbackType } from "../types";
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import {
-  DanswerDocument,
-  FilteredDanswerDocument,
+  OnyxDocument,
+  FilteredOnyxDocument,
+  MinimalOnyxDocument,
 } from "@/lib/search/interfaces";
-import { SearchSummary } from "./SearchSummary";
-import { SourceIcon } from "@/components/SourceIcon";
+import { SearchSummary, UserKnowledgeFiles } from "./SearchSummary";
 import { SkippedSearch } from "./SkippedSearch";
 import remarkGfm from "remark-gfm";
 import { CopyButton } from "@/components/CopyButton";
@@ -31,29 +38,50 @@ import { DocumentPreview } from "../files/documents/DocumentPreview";
 import { InMessageImage } from "../files/images/InMessageImage";
 import { CodeBlock } from "./CodeBlock";
 import rehypePrism from "rehype-prism-plus";
-
 import "prismjs/themes/prism-tomorrow.css";
 import "./custom-code-styles.css";
 import { Persona } from "@/app/admin/assistants/interfaces";
 import { AssistantIcon } from "@/components/assistants/AssistantIcon";
-import { Citation } from "@/components/search/results/Citation";
-import { DocumentMetadataBlock } from "@/components/search/DocumentDisplay";
-
 import { LikeFeedback, DislikeFeedback } from "@/components/icons/icons";
 import {
   CustomTooltip,
   TooltipGroup,
 } from "@/components/tooltip/CustomTooltip";
-import { ValidSources } from "@/lib/types";
-import { Tooltip } from "@/components/tooltip/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useMouseTracking } from "./hooks";
-import { InternetSearchIcon } from "@/components/InternetSearchIcon";
 import { SettingsContext } from "@/components/settings/SettingsProvider";
 import GeneratingImageDisplay from "../tools/GeneratingImageDisplay";
 import RegenerateOption from "../RegenerateOption";
-import { LlmOverride } from "@/lib/hooks";
+import { LlmDescriptor } from "@/lib/hooks";
 import { ContinueGenerating } from "./ContinueMessage";
-import { MemoizedLink, MemoizedParagraph } from "./MemoizedTextComponents";
+import { MemoizedAnchor, MemoizedParagraph } from "./MemoizedTextComponents";
+import { extractCodeText, preprocessLaTeX } from "./codeUtils";
+import ToolResult from "../../../components/tools/ToolResult";
+import CsvContent from "../../../components/tools/CSVContent";
+import {
+  FilesSeeMoreBlock,
+  SeeMoreBlock,
+} from "@/components/chat/sources/SourceCard";
+import { FileSourceCard, SourceCard } from "./SourcesDisplay";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+import { copyAll, handleCopy } from "./copyingUtils";
+import { transformLinkUri } from "@/lib/utils";
+import { ThinkingBox } from "./thinkingBox/ThinkingBox";
+import {
+  hasCompletedThinkingTokens,
+  hasPartialThinkingTokens,
+  extractThinkingContent,
+  isThinkingComplete,
+  removeThinkingTokens,
+} from "../utils/thinkingTokens";
+import { FileResponse } from "../my-documents/DocumentsContext";
 
 const TOOLS_WITH_CUSTOM_HANDLING = [
   SEARCH_TOOL_NAME,
@@ -64,27 +92,34 @@ const TOOLS_WITH_CUSTOM_HANDLING = [
 function FileDisplay({
   files,
   alignBubble,
+  setPresentingDocument,
 }: {
   files: FileDescriptor[];
   alignBubble?: boolean;
+  setPresentingDocument: (document: MinimalOnyxDocument) => void;
 }) {
+  const [close, setClose] = useState(true);
+  const [expandedKnowledge, setExpandedKnowledge] = useState(false);
   const imageFiles = files.filter((file) => file.type === ChatFileType.IMAGE);
-  const nonImgFiles = files.filter((file) => file.type !== ChatFileType.IMAGE);
+  const textFiles = files.filter(
+    (file) => file.type == ChatFileType.PLAIN_TEXT
+  );
+
+  const csvImgFiles = files.filter((file) => file.type == ChatFileType.CSV);
 
   return (
     <>
-      {nonImgFiles && nonImgFiles.length > 0 && (
+      {textFiles && textFiles.length > 0 && (
         <div
-          id="danswer-file"
+          id="onyx-file"
           className={` ${alignBubble && "ml-auto"} mt-2 auto mb-4`}
         >
           <div className="flex flex-col gap-2">
-            {nonImgFiles.map((file) => {
+            {textFiles.map((file) => {
               return (
                 <div key={file.id} className="w-fit">
                   <DocumentPreview
                     fileName={file.name || file.id}
-                    maxWidth="max-w-64"
                     alignBubble={alignBubble}
                   />
                 </div>
@@ -93,9 +128,10 @@ function FileDisplay({
           </div>
         </div>
       )}
+
       {imageFiles && imageFiles.length > 0 && (
         <div
-          id="danswer-image"
+          id="onyx-image"
           className={` ${alignBubble && "ml-auto"} mt-2 auto mb-4`}
         >
           <div className="flex flex-col gap-2">
@@ -105,11 +141,80 @@ function FileDisplay({
           </div>
         </div>
       )}
+      {csvImgFiles && csvImgFiles.length > 0 && (
+        <div className={` ${alignBubble && "ml-auto"} mt-2 auto mb-4`}>
+          <div className="flex flex-col gap-2">
+            {csvImgFiles.map((file) => {
+              return (
+                <div key={file.id} className="w-fit">
+                  {close ? (
+                    <>
+                      <ToolResult
+                        csvFileDescriptor={file}
+                        close={() => setClose(false)}
+                        contentComponent={CsvContent}
+                      />
+                    </>
+                  ) : (
+                    <DocumentPreview
+                      open={() => setClose(true)}
+                      fileName={file.name || file.id}
+                      maxWidth="max-w-64"
+                      alignBubble={alignBubble}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
+function FileResponseDisplay({
+  files,
+  alignBubble,
+  setPresentingDocument,
+}: {
+  files: FileResponse[];
+  alignBubble?: boolean;
+  setPresentingDocument: (document: MinimalOnyxDocument) => void;
+}) {
+  if (!files || files.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      id="onyx-file-response"
+      className={`${alignBubble && "ml-auto"} mt-2 auto mb-4`}
+    >
+      <div className="flex flex-col gap-2">
+        {files.map((file) => {
+          return (
+            <div key={file.id} className="w-fit">
+              <DocumentPreview
+                fileName={file.name || file.document_id}
+                alignBubble={alignBubble}
+                open={() =>
+                  setPresentingDocument({
+                    document_id: file.document_id,
+                    semantic_identifier: file.name || file.document_id,
+                  })
+                }
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export const AIMessage = ({
+  userKnowledgeFiles = [],
   regenerate,
   overriddenModel,
   continueGenerating,
@@ -123,50 +228,97 @@ export const AIMessage = ({
   files,
   selectedDocuments,
   query,
-  personaName,
   citedDocuments,
   toolCall,
   isComplete,
   hasDocs,
   handleFeedback,
-  isCurrentlyShowingRetrieved,
-  handleShowRetrieved,
   handleSearchQueryEdit,
   handleForceSearch,
   retrievalDisabled,
   currentPersona,
   otherMessagesCanSwitchTo,
   onMessageSelection,
+  setPresentingDocument,
+  index,
+  documentSidebarVisible,
+  removePadding,
 }: {
+  userKnowledgeFiles?: FileResponse[];
+  index?: number;
   shared?: boolean;
   isActive?: boolean;
   continueGenerating?: () => void;
   otherMessagesCanSwitchTo?: number[];
   onMessageSelection?: (messageId: number) => void;
-  selectedDocuments?: DanswerDocument[] | null;
+  selectedDocuments?: OnyxDocument[] | null;
   toggleDocumentSelection?: () => void;
-  docs?: DanswerDocument[] | null;
+  docs?: OnyxDocument[] | null;
   alternativeAssistant?: Persona | null;
   currentPersona: Persona;
   messageId: number | null;
   content: string | JSX.Element;
   files?: FileDescriptor[];
   query?: string;
-  personaName?: string;
-  citedDocuments?: [string, DanswerDocument][] | null;
-  toolCall?: ToolCallMetadata;
+  citedDocuments?: [string, OnyxDocument][] | null;
+  toolCall?: ToolCallMetadata | null;
   isComplete?: boolean;
+  documentSidebarVisible?: boolean;
   hasDocs?: boolean;
   handleFeedback?: (feedbackType: FeedbackType) => void;
-  isCurrentlyShowingRetrieved?: boolean;
-  handleShowRetrieved?: (messageNumber: number | null) => void;
   handleSearchQueryEdit?: (query: string) => void;
   handleForceSearch?: () => void;
   retrievalDisabled?: boolean;
   overriddenModel?: string;
-  regenerate?: (modelOverRide: LlmOverride) => Promise<void>;
+  regenerate?: (modelOverRide: LlmDescriptor) => Promise<void>;
+  setPresentingDocument: (document: MinimalOnyxDocument) => void;
+  removePadding?: boolean;
 }) => {
   const toolCallGenerating = toolCall && !toolCall.tool_result;
+
+  // Check if content contains thinking tokens (complete or partial)
+  const hasThinkingTokens = useMemo(() => {
+    return (
+      hasCompletedThinkingTokens(content) || hasPartialThinkingTokens(content)
+    );
+  }, [content]);
+
+  // Extract thinking content
+  const thinkingContent = useMemo(() => {
+    if (!hasThinkingTokens) return "";
+    return extractThinkingContent(content);
+  }, [content, hasThinkingTokens]);
+
+  // Track if thinking is complete
+  const isThinkingTokenComplete = useMemo(() => {
+    return isThinkingComplete(thinkingContent);
+  }, [thinkingContent]);
+
+  // Extract final content (remove thinking tokens)
+  const finalContent = useMemo(() => {
+    if (!hasThinkingTokens) return content;
+    return removeThinkingTokens(content);
+  }, [content, hasThinkingTokens]);
+
+  // Only show the message content when we've completed the thinking section
+  // or there are no thinking tokens to begin with
+  const shouldShowContent = useMemo(() => {
+    if (!hasThinkingTokens) return true;
+
+    // If the message is complete, we always show the content
+    if (isComplete) return true;
+
+    // If thinking is not complete, we don't show the content yet
+    if (!isThinkingTokenComplete) return false;
+
+    // If thinking is complete but we're not done with the message yet,
+    // only show the content if there's actually something to show
+    const cleanedContent =
+      typeof finalContent === "string" ? finalContent.trim() : finalContent;
+
+    return !!cleanedContent && cleanedContent !== "";
+  }, [hasThinkingTokens, isComplete, isThinkingTokenComplete, finalContent]);
+
   const processContent = (content: string | JSX.Element) => {
     if (typeof content !== "string") {
       return content;
@@ -184,16 +336,19 @@ export const AIMessage = ({
       }, content);
 
       const lastMatch = matches[matches.length - 1];
-      if (!lastMatch.endsWith("```")) {
-        return content;
+      if (lastMatch && !lastMatch.endsWith("```")) {
+        return preprocessLaTeX(content);
       }
     }
+    const processed = preprocessLaTeX(content);
 
-    return content + (!isComplete && !toolCallGenerating ? " [*]() " : "");
+    return processed + (!isComplete && !toolCallGenerating ? " [*]() " : "");
   };
-  const finalContent = processContent(content as string);
 
-  const [isRegenerateHovered, setIsRegenerateHovered] = useState(false);
+  const finalContentProcessed = processContent(finalContent as string);
+
+  const [isRegenerateDropdownVisible, setIsRegenerateDropdownVisible] =
+    useState(false);
   const { isHovering, trackedElementRef, hoverElementRef } = useMouseTracking();
 
   const settings = useContext(SettingsContext);
@@ -201,7 +356,7 @@ export const AIMessage = ({
 
   const selectedDocumentIds =
     selectedDocuments?.map((document) => document.document_id) || [];
-  let citedDocumentIds: string[] = [];
+  const citedDocumentIds: string[] = [];
 
   citedDocuments?.forEach((doc) => {
     citedDocumentIds.push(doc[1].document_id);
@@ -225,7 +380,7 @@ export const AIMessage = ({
     content = trimIncompleteCodeSection(content);
   }
 
-  let filteredDocs: FilteredDanswerDocument[] = [];
+  let filteredDocs: FilteredOnyxDocument[] = [];
 
   if (docs) {
     filteredDocs = docs
@@ -238,7 +393,7 @@ export const AIMessage = ({
       .filter((doc) => {
         return citedDocumentIds.includes(doc.document_id);
       })
-      .map((doc: DanswerDocument, ind: number) => {
+      .map((doc: OnyxDocument, ind: number) => {
         return {
           ...doc,
           included: selectedDocumentIds.includes(doc.document_id),
@@ -246,12 +401,88 @@ export const AIMessage = ({
       });
   }
 
+  const paragraphCallback = useCallback(
+    (props: any) => <MemoizedParagraph>{props.children}</MemoizedParagraph>,
+    []
+  );
+
+  const anchorCallback = useCallback(
+    (props: any) => (
+      <MemoizedAnchor
+        updatePresentingDocument={setPresentingDocument!}
+        docs={docs}
+        userFiles={userKnowledgeFiles}
+        href={props.href}
+      >
+        {props.children}
+      </MemoizedAnchor>
+    ),
+    [docs]
+  );
+
   const currentMessageInd = messageId
     ? otherMessagesCanSwitchTo?.indexOf(messageId)
     : undefined;
-  const uniqueSources: ValidSources[] = Array.from(
-    new Set((docs || []).map((doc) => doc.source_type))
-  ).slice(0, 3);
+
+  const webSourceDomains: string[] = Array.from(
+    new Set(
+      docs
+        ?.filter((doc) => doc.source_type === "web")
+        .map((doc) => {
+          try {
+            const url = new URL(doc.link);
+            return `https://${url.hostname}`;
+          } catch {
+            return doc.link; // fallback to full link if parsing fails
+          }
+        }) || []
+    )
+  );
+
+  const markdownComponents = useMemo(
+    () => ({
+      a: anchorCallback,
+      p: paragraphCallback,
+      b: ({ node, className, children }: any) => {
+        return <span className={className}>{children}</span>;
+      },
+      code: ({ node, className, children }: any) => {
+        const codeText = extractCodeText(
+          node,
+          finalContentProcessed as string,
+          children
+        );
+
+        return (
+          <CodeBlock className={className} codeText={codeText}>
+            {children}
+          </CodeBlock>
+        );
+      },
+    }),
+    [anchorCallback, paragraphCallback, finalContentProcessed]
+  );
+  const markdownRef = useRef<HTMLDivElement>(null);
+
+  // Process selection copying with HTML formatting
+
+  const renderedMarkdown = useMemo(() => {
+    if (typeof finalContentProcessed !== "string") {
+      return finalContentProcessed;
+    }
+
+    return (
+      <ReactMarkdown
+        className="prose dark:prose-invert max-w-full text-base"
+        components={markdownComponents}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[[rehypePrism, { ignoreMissing: true }], rehypeKatex]}
+        urlTransform={transformLinkUri}
+      >
+        {finalContentProcessed}
+      </ReactMarkdown>
+    );
+  }, [finalContentProcessed, markdownComponents]);
 
   const includeMessageSwitcher =
     currentMessageInd !== undefined &&
@@ -259,57 +490,78 @@ export const AIMessage = ({
     otherMessagesCanSwitchTo &&
     otherMessagesCanSwitchTo.length > 1;
 
+  let otherMessage: number | undefined = undefined;
+  if (currentMessageInd && otherMessagesCanSwitchTo) {
+    otherMessage = otherMessagesCanSwitchTo[currentMessageInd - 1];
+  }
+
   return (
     <div
-      id="danswer-ai-message"
+      id={isComplete ? "onyx-ai-message" : undefined}
       ref={trackedElementRef}
-      className={"py-5 ml-4 px-5 relative flex "}
+      className={`py-5  ml-4 lg:px-5 relative flex
+        
+        ${removePadding && "!pl-24 -mt-12"}`}
     >
       <div
-        className={`mx-auto ${shared ? "w-full" : "w-[90%]"}  max-w-message-max`}
+        className={`mx-auto ${
+          shared ? "w-full" : "w-[90%]"
+        }  max-w-message-max`}
       >
-        <div className={`desktop:mr-12 ${!shared && "mobile:ml-0 md:ml-8"}`}>
-          <div className="flex">
-            <AssistantIcon
-              size="small"
-              assistant={alternativeAssistant || currentPersona}
-            />
+        <div className={`lg:mr-12 ${!shared && "mobile:ml-0 md:ml-8"}`}>
+          <div className="flex items-start">
+            {!removePadding && (
+              <AssistantIcon
+                className="mobile:hidden"
+                size={24}
+                assistant={alternativeAssistant || currentPersona}
+              />
+            )}
 
             <div className="w-full">
               <div className="max-w-message-max break-words">
-                <div className="w-full ml-4">
+                <div className="w-full desktop:ml-4">
                   <div className="max-w-message-max break-words">
-                    {!toolCall || toolCall.tool_name === SEARCH_TOOL_NAME ? (
-                      <>
-                        {query !== undefined &&
-                          handleShowRetrieved !== undefined &&
-                          !retrievalDisabled && (
+                    {userKnowledgeFiles.length == 0 &&
+                      (!toolCall || toolCall.tool_name === SEARCH_TOOL_NAME ? (
+                        <>
+                          {query !== undefined && (
                             <div className="mb-1">
                               <SearchSummary
+                                index={index || 0}
                                 query={query}
                                 finished={toolCall?.tool_result != undefined}
-                                hasDocs={hasDocs || false}
-                                messageId={messageId}
-                                handleShowRetrieved={handleShowRetrieved}
                                 handleSearchQueryEdit={handleSearchQueryEdit}
+                                docs={docs || []}
+                                toggleDocumentSelection={
+                                  toggleDocumentSelection!
+                                }
+                                userFileSearch={retrievalDisabled ?? false}
                               />
                             </div>
                           )}
-                        {handleForceSearch &&
-                          content &&
-                          query === undefined &&
-                          !hasDocs &&
-                          !retrievalDisabled && (
-                            <div className="mb-1">
-                              <SkippedSearch
-                                handleForceSearch={handleForceSearch}
-                              />
-                            </div>
-                          )}
-                      </>
-                    ) : null}
 
-                    {toolCall &&
+                          {handleForceSearch &&
+                            content &&
+                            query === undefined &&
+                            !hasDocs &&
+                            !retrievalDisabled && (
+                              <div className="mb-1">
+                                <SkippedSearch
+                                  handleForceSearch={handleForceSearch}
+                                />
+                              </div>
+                            )}
+                        </>
+                      ) : null)}
+                    {userKnowledgeFiles && (
+                      <UserKnowledgeFiles
+                        userKnowledgeFiles={userKnowledgeFiles}
+                      />
+                    )}
+
+                    {!userKnowledgeFiles &&
+                      toolCall &&
                       !TOOLS_WITH_CUSTOM_HANDLING.includes(
                         toolCall.tool_name
                       ) && (
@@ -325,12 +577,10 @@ export const AIMessage = ({
                           isRunning={!toolCall.tool_result || !content}
                         />
                       )}
-
                     {toolCall &&
                       (!files || files.length == 0) &&
                       toolCall.tool_name === IMAGE_GENERATION_TOOL_NAME &&
                       !toolCall.tool_result && <GeneratingImageDisplay />}
-
                     {toolCall &&
                       toolCall.tool_name === INTERNET_SEARCH_TOOL_NAME && (
                         <ToolRunDisplay
@@ -345,34 +595,126 @@ export const AIMessage = ({
                           isRunning={!toolCall.tool_result}
                         />
                       )}
+                    {userKnowledgeFiles.length == 0 &&
+                      docs &&
+                      docs.length > 0 && (
+                        <div
+                          className={`mobile:hidden ${
+                            (query ||
+                              toolCall?.tool_name ===
+                                INTERNET_SEARCH_TOOL_NAME) &&
+                            "mt-2"
+                          }  -mx-8 w-full mb-4 flex relative`}
+                        >
+                          <div className="w-full">
+                            <div className="px-8 flex gap-x-2">
+                              {!settings?.isMobile &&
+                                docs.length > 0 &&
+                                docs
+                                  .slice(0, 2)
+                                  .map((doc: OnyxDocument, ind: number) => (
+                                    <SourceCard
+                                      document={doc}
+                                      key={ind}
+                                      setPresentingDocument={() =>
+                                        setPresentingDocument({
+                                          document_id: doc.document_id,
+                                          semantic_identifier: doc.document_id,
+                                        })
+                                      }
+                                    />
+                                  ))}
+                              <SeeMoreBlock
+                                toggled={documentSidebarVisible!}
+                                toggleDocumentSelection={
+                                  toggleDocumentSelection!
+                                }
+                                docs={docs}
+                                webSourceDomains={webSourceDomains}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
-                    {content || files ? (
+                    {userKnowledgeFiles && userKnowledgeFiles.length > 0 && (
+                      <div
+                        key={10}
+                        className={`mobile:hidden ${
+                          (query ||
+                            toolCall?.tool_name ===
+                              INTERNET_SEARCH_TOOL_NAME) &&
+                          "mt-2"
+                        }  -mx-8 w-full mb-4 flex relative`}
+                      >
+                        <div className="w-full">
+                          <div className="px-8 flex gap-x-2">
+                            {!settings?.isMobile &&
+                              userKnowledgeFiles.length > 0 &&
+                              userKnowledgeFiles
+                                .slice(0, 2)
+                                .map((file: FileResponse, ind: number) => (
+                                  <FileSourceCard
+                                    relevantDocument={docs?.find(
+                                      (doc) =>
+                                        doc.document_id ===
+                                          `FILE_CONNECTOR__${file.file_id}` ||
+                                        doc.document_id ===
+                                          `USER_FILE_CONNECTOR__${file.file_id}`
+                                    )}
+                                    key={ind}
+                                    document={file}
+                                    setPresentingDocument={() =>
+                                      setPresentingDocument({
+                                        document_id: file.document_id,
+                                        semantic_identifier: file.name,
+                                      })
+                                    }
+                                  />
+                                ))}
+
+                            {userKnowledgeFiles.length > 2 && (
+                              <FilesSeeMoreBlock
+                                key={10}
+                                toggled={documentSidebarVisible!}
+                                toggleDocumentSelection={
+                                  toggleDocumentSelection!
+                                }
+                                files={userKnowledgeFiles}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Render thinking box if thinking tokens exist */}
+                    {hasThinkingTokens && thinkingContent && (
+                      <div className="mb-2">
+                        <ThinkingBox
+                          content={thinkingContent}
+                          isComplete={isComplete || false}
+                          isStreaming={!isThinkingTokenComplete || !isComplete}
+                        />
+                      </div>
+                    )}
+
+                    {/* Only show the message content once thinking is complete or if there's no thinking */}
+                    {shouldShowContent && (content || files) ? (
                       <>
-                        <FileDisplay files={files || []} />
-
+                        <FileDisplay
+                          setPresentingDocument={setPresentingDocument}
+                          files={files || []}
+                        />
                         {typeof content === "string" ? (
                           <div className="overflow-x-visible max-w-content-max">
-                            <ReactMarkdown
-                              key={messageId}
-                              className="prose max-w-full text-base"
-                              components={{
-                                a: MemoizedLink,
-                                p: MemoizedParagraph,
-                                code: (props) => (
-                                  <CodeBlock
-                                    className="w-full"
-                                    {...props}
-                                    content={content as string}
-                                  />
-                                ),
-                              }}
-                              remarkPlugins={[remarkGfm]}
-                              rehypePlugins={[
-                                [rehypePrism, { ignoreMissing: true }],
-                              ]}
+                            <div
+                              ref={markdownRef}
+                              className="focus:outline-none cursor-text select-text"
+                              onCopy={(e) => handleCopy(e, markdownRef)}
                             >
-                              {finalContent as string}
-                            </ReactMarkdown>
+                              {renderedMarkdown}
+                            </div>
                           </div>
                         ) : (
                           content
@@ -381,137 +723,75 @@ export const AIMessage = ({
                     ) : isComplete ? null : (
                       <></>
                     )}
-                    {isComplete && docs && docs.length > 0 && (
-                      <div className="mt-2 -mx-8 w-full mb-4 flex relative">
-                        <div className="w-full">
-                          <div className="px-8 flex gap-x-2">
-                            {!settings?.isMobile &&
-                              filteredDocs.length > 0 &&
-                              filteredDocs.slice(0, 2).map((doc, ind) => (
-                                <div
-                                  key={doc.document_id}
-                                  className={`w-[200px] rounded-lg flex-none transition-all duration-500 hover:bg-background-125 bg-text-100 px-4 pb-2 pt-1 border-b
-                              `}
-                                >
-                                  <a
-                                    href={doc.link || undefined}
-                                    target="_blank"
-                                    className="text-sm flex w-full pt-1 gap-x-1.5 overflow-hidden justify-between font-semibold text-text-700"
-                                  >
-                                    <Citation link={doc.link} index={ind + 1} />
-                                    <p className="shrink truncate ellipsis break-all">
-                                      {doc.semantic_identifier ||
-                                        doc.document_id}
-                                    </p>
-                                    <div className="ml-auto flex-none">
-                                      {doc.is_internet ? (
-                                        <InternetSearchIcon url={doc.link} />
-                                      ) : (
-                                        <SourceIcon
-                                          sourceType={doc.source_type}
-                                          iconSize={18}
-                                        />
-                                      )}
-                                    </div>
-                                  </a>
-                                  <div className="flex overscroll-x-scroll mt-.5">
-                                    <DocumentMetadataBlock document={doc} />
-                                  </div>
-                                  <div className="line-clamp-3 text-xs break-words pt-1">
-                                    {doc.blurb}
-                                  </div>
-                                </div>
-                              ))}
-                            <div
-                              onClick={() => {
-                                if (toggleDocumentSelection) {
-                                  toggleDocumentSelection();
-                                }
-                              }}
-                              key={-1}
-                              className="cursor-pointer w-[200px] rounded-lg flex-none transition-all duration-500 hover:bg-background-125 bg-text-100 px-4 py-2 border-b"
-                            >
-                              <div className="text-sm flex justify-between font-semibold text-text-700">
-                                <p className="line-clamp-1">See context</p>
-                                <div className="flex gap-x-1">
-                                  {uniqueSources.map((sourceType, ind) => {
-                                    return (
-                                      <div key={ind} className="flex-none">
-                                        <SourceIcon
-                                          sourceType={sourceType}
-                                          iconSize={18}
-                                        />
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                              <div className="line-clamp-3 text-xs break-words pt-1">
-                                See more
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
 
-                  {handleFeedback &&
+                  {!removePadding &&
+                    handleFeedback &&
                     (isActive ? (
                       <div
                         className={`
                         flex md:flex-row gap-x-0.5 mt-1
                         transition-transform duration-300 ease-in-out
-                        transform opacity-100 translate-y-0"
+                        transform opacity-100 "
                   `}
                       >
                         <TooltipGroup>
                           <div className="flex justify-start w-full gap-x-0.5">
-                            {includeMessageSwitcher && (
-                              <div className="-mx-1 mr-auto">
-                                <MessageSwitcher
-                                  currentPage={currentMessageInd + 1}
-                                  totalPages={otherMessagesCanSwitchTo.length}
-                                  handlePrevious={() => {
-                                    onMessageSelection(
-                                      otherMessagesCanSwitchTo[
-                                        currentMessageInd - 1
-                                      ]
-                                    );
-                                  }}
-                                  handleNext={() => {
-                                    onMessageSelection(
-                                      otherMessagesCanSwitchTo[
-                                        currentMessageInd + 1
-                                      ]
-                                    );
-                                  }}
-                                />
-                              </div>
-                            )}
+                            {includeMessageSwitcher &&
+                              otherMessage !== undefined && (
+                                <div className="-mx-1 mr-auto">
+                                  <MessageSwitcher
+                                    currentPage={currentMessageInd + 1}
+                                    totalPages={otherMessagesCanSwitchTo.length}
+                                    handlePrevious={() => {
+                                      onMessageSelection(otherMessage!);
+                                    }}
+                                    handleNext={() => {
+                                      onMessageSelection(otherMessage!);
+                                    }}
+                                  />
+                                </div>
+                              )}
                           </div>
-                          <CustomTooltip showTick line content="Copy!">
-                            <CopyButton content={content.toString()} />
+                          <CustomTooltip showTick line content="Copy">
+                            <CopyButton
+                              copyAllFn={() =>
+                                copyAll(
+                                  finalContentProcessed as string,
+                                  markdownRef
+                                )
+                              }
+                            />
                           </CustomTooltip>
-                          <CustomTooltip showTick line content="Good response!">
+                          <CustomTooltip showTick line content="Good response">
                             <HoverableIcon
                               icon={<LikeFeedback />}
                               onClick={() => handleFeedback("like")}
                             />
                           </CustomTooltip>
-                          <CustomTooltip showTick line content="Bad response!">
+                          <CustomTooltip showTick line content="Bad response">
                             <HoverableIcon
                               icon={<DislikeFeedback size={16} />}
                               onClick={() => handleFeedback("dislike")}
                             />
                           </CustomTooltip>
+
                           {regenerate && (
-                            <RegenerateOption
-                              onHoverChange={setIsRegenerateHovered}
-                              selectedAssistant={currentPersona!}
-                              regenerate={regenerate}
-                              overriddenModel={overriddenModel}
-                            />
+                            <CustomTooltip
+                              disabled={isRegenerateDropdownVisible}
+                              showTick
+                              line
+                              content="Regenerate"
+                            >
+                              <RegenerateOption
+                                onDropdownVisibleChange={
+                                  setIsRegenerateDropdownVisible
+                                }
+                                selectedAssistant={currentPersona!}
+                                regenerate={regenerate}
+                                overriddenModel={overriddenModel}
+                              />
+                            </CustomTooltip>
                           )}
                         </TooltipGroup>
                       </div>
@@ -521,62 +801,73 @@ export const AIMessage = ({
                         className={`
                         absolute -bottom-5
                         z-10
-                        invisible ${(isHovering || isRegenerateHovered || settings?.isMobile) && "!visible"}
-                        opacity-0 ${(isHovering || isRegenerateHovered || settings?.isMobile) && "!opacity-100"}
-                        translate-y-2 ${(isHovering || settings?.isMobile) && "!translate-y-0"}
-                        transition-transform duration-300 ease-in-out 
+                        invisible ${
+                          (isHovering || settings?.isMobile) && "!visible"
+                        }
+                        opacity-0 ${
+                          (isHovering || settings?.isMobile) && "!opacity-100"
+                        }
                         flex md:flex-row gap-x-0.5 bg-background-125/40 -mx-1.5 p-1.5 rounded-lg
                         `}
                       >
                         <TooltipGroup>
                           <div className="flex justify-start w-full gap-x-0.5">
-                            {includeMessageSwitcher && (
-                              <div className="-mx-1 mr-auto">
-                                <MessageSwitcher
-                                  currentPage={currentMessageInd + 1}
-                                  totalPages={otherMessagesCanSwitchTo.length}
-                                  handlePrevious={() => {
-                                    onMessageSelection(
-                                      otherMessagesCanSwitchTo[
-                                        currentMessageInd - 1
-                                      ]
-                                    );
-                                  }}
-                                  handleNext={() => {
-                                    onMessageSelection(
-                                      otherMessagesCanSwitchTo[
-                                        currentMessageInd + 1
-                                      ]
-                                    );
-                                  }}
-                                />
-                              </div>
-                            )}
+                            {includeMessageSwitcher &&
+                              otherMessage !== undefined && (
+                                <div className="-mx-1 mr-auto">
+                                  <MessageSwitcher
+                                    currentPage={currentMessageInd + 1}
+                                    totalPages={otherMessagesCanSwitchTo.length}
+                                    handlePrevious={() => {
+                                      onMessageSelection(otherMessage!);
+                                    }}
+                                    handleNext={() => {
+                                      onMessageSelection(otherMessage!);
+                                    }}
+                                  />
+                                </div>
+                              )}
                           </div>
-                          <CustomTooltip showTick line content="Copy!">
-                            <CopyButton content={content.toString()} />
+                          <CustomTooltip showTick line content="Copy">
+                            <CopyButton
+                              copyAllFn={() =>
+                                copyAll(
+                                  finalContentProcessed as string,
+                                  markdownRef
+                                )
+                              }
+                            />
                           </CustomTooltip>
 
-                          <CustomTooltip showTick line content="Good response!">
+                          <CustomTooltip showTick line content="Good response">
                             <HoverableIcon
                               icon={<LikeFeedback />}
                               onClick={() => handleFeedback("like")}
                             />
                           </CustomTooltip>
 
-                          <CustomTooltip showTick line content="Bad response!">
+                          <CustomTooltip showTick line content="Bad response">
                             <HoverableIcon
                               icon={<DislikeFeedback size={16} />}
                               onClick={() => handleFeedback("dislike")}
                             />
                           </CustomTooltip>
                           {regenerate && (
-                            <RegenerateOption
-                              selectedAssistant={currentPersona!}
-                              regenerate={regenerate}
-                              overriddenModel={overriddenModel}
-                              onHoverChange={setIsRegenerateHovered}
-                            />
+                            <CustomTooltip
+                              disabled={isRegenerateDropdownVisible}
+                              showTick
+                              line
+                              content="Regenerate"
+                            >
+                              <RegenerateOption
+                                selectedAssistant={currentPersona!}
+                                onDropdownVisibleChange={
+                                  setIsRegenerateDropdownVisible
+                                }
+                                regenerate={regenerate}
+                                overriddenModel={overriddenModel}
+                              />
+                            </CustomTooltip>
                           )}
                         </TooltipGroup>
                       </div>
@@ -601,27 +892,67 @@ function MessageSwitcher({
   totalPages,
   handlePrevious,
   handleNext,
+  disableForStreaming,
 }: {
   currentPage: number;
   totalPages: number;
   handlePrevious: () => void;
   handleNext: () => void;
+  disableForStreaming?: boolean;
 }) {
   return (
     <div className="flex items-center text-sm space-x-0.5">
-      <Hoverable
-        icon={FiChevronLeft}
-        onClick={currentPage === 1 ? undefined : handlePrevious}
-      />
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <Hoverable
+                icon={FiChevronLeft}
+                onClick={
+                  disableForStreaming
+                    ? () => null
+                    : currentPage === 1
+                      ? undefined
+                      : handlePrevious
+                }
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            {disableForStreaming
+              ? "Wait for agent message to complete"
+              : "Previous"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
-      <span className="text-emphasis select-none">
+      <span className="text-text-darker select-none">
         {currentPage} / {totalPages}
       </span>
 
-      <Hoverable
-        icon={FiChevronRight}
-        onClick={currentPage === totalPages ? undefined : handleNext}
-      />
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger>
+            <div>
+              <Hoverable
+                icon={FiChevronRight}
+                onClick={
+                  disableForStreaming
+                    ? () => null
+                    : currentPage === totalPages
+                      ? undefined
+                      : handleNext
+                }
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            {disableForStreaming
+              ? "Wait for agent message to complete"
+              : "Next"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   );
 }
@@ -635,6 +966,8 @@ export const HumanMessage = ({
   onMessageSelection,
   shared,
   stopGenerating = () => null,
+  disableSwitchingForStreaming = false,
+  setPresentingDocument,
 }: {
   shared?: boolean;
   content: string;
@@ -644,6 +977,8 @@ export const HumanMessage = ({
   onEdit?: (editedContent: string) => void;
   onMessageSelection?: (messageId: number) => void;
   stopGenerating?: () => void;
+  disableSwitchingForStreaming?: boolean;
+  setPresentingDocument: (document: MinimalOnyxDocument) => void;
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -655,7 +990,7 @@ export const HumanMessage = ({
     if (!isEditing) {
       setEditedContent(content);
     }
-  }, [content]);
+  }, [content, isEditing]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -669,9 +1004,7 @@ export const HumanMessage = ({
   }, [isEditing]);
 
   const handleEditSubmit = () => {
-    if (editedContent.trim() !== content.trim()) {
-      onEdit?.(editedContent);
-    }
+    onEdit?.(editedContent);
     setIsEditing(false);
   };
 
@@ -679,19 +1012,30 @@ export const HumanMessage = ({
     ? otherMessagesCanSwitchTo?.indexOf(messageId)
     : undefined;
 
+  let otherMessage: number | undefined = undefined;
+  if (currentMessageInd && otherMessagesCanSwitchTo) {
+    otherMessage = otherMessagesCanSwitchTo[currentMessageInd - 1];
+  }
+
   return (
     <div
-      id="danswer-human-message"
-      className="pt-5 pb-1 px-2 lg:px-5 flex -mr-6 relative"
+      id="onyx-human-message"
+      className="pt-5 pb-1 w-full lg:px-5 flex -mr-6 relative"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
-        className={`text-user-text mx-auto ${shared ? "w-full" : "w-[90%]"} max-w-[790px]`}
+        className={`text-user-text mx-auto ${
+          shared ? "w-full" : "w-[90%]"
+        } max-w-[790px]`}
       >
         <div className="xl:ml-8">
-          <div className="flex flex-col mr-4">
-            <FileDisplay alignBubble files={files || []} />
+          <div className="flex flex-col desktop:mr-4">
+            <FileDisplay
+              alignBubble
+              setPresentingDocument={setPresentingDocument}
+              files={files || []}
+            />
 
             <div className="flex justify-end">
               <div className="w-full ml-8 flex w-full w-[800px] break-words">
@@ -706,7 +1050,6 @@ export const HumanMessage = ({
                       border 
                       border-border 
                       rounded-lg 
-                      bg-background-emphasis
                       pb-2
                       [&:has(textarea:focus)]::ring-1
                       [&:has(textarea:focus)]::ring-black
@@ -722,15 +1065,16 @@ export const HumanMessage = ({
                         border-0
                         rounded-lg 
                         overflow-y-hidden
-                        bg-background-emphasis 
                         whitespace-normal 
                         break-word
                         overscroll-contain
                         outline-none 
-                        placeholder-gray-400 
+                        placeholder-text-400 
                         resize-none
+                        text-text-editing-message
                         pl-4
                         overflow-y-auto
+                        bg-background
                         pr-12 
                         py-4`}
                         aria-multiline
@@ -758,7 +1102,7 @@ export const HumanMessage = ({
                         <button
                           className={`
                           w-fit
-                          bg-accent 
+                          bg-agent 
                           text-inverted 
                           text-sm
                           rounded-lg 
@@ -770,7 +1114,7 @@ export const HumanMessage = ({
                           min-h-[38px]
                           py-2
                           px-3
-                          hover:bg-accent-hover
+                          hover:bg-agent-hovered
                         `}
                           onClick={handleEditSubmit}
                         >
@@ -787,11 +1131,10 @@ export const HumanMessage = ({
                           py-2 
                           px-3 
                           w-fit 
-                          bg-hover
-                          bg-background-strong 
+                          bg-background-200 
                           text-sm
                           rounded-lg
-                          hover:bg-hover-emphasis
+                          hover:bg-accent-background-hovered-emphasis
                         `}
                           onClick={() => {
                             setEditedContent(content);
@@ -805,22 +1148,25 @@ export const HumanMessage = ({
                   </div>
                 ) : typeof content === "string" ? (
                   <>
-                    <div className="ml-auto mr-1 my-auto">
+                    <div className="ml-auto flex items-center mr-1 mt-2 h-fit mb-auto">
                       {onEdit &&
                       isHovered &&
                       !isEditing &&
                       (!files || files.length === 0) ? (
-                        <Tooltip delayDuration={1000} content={"Edit message"}>
-                          <button
-                            className="hover:bg-hover p-1.5 rounded"
-                            onClick={() => {
-                              setIsEditing(true);
-                              setIsHovered(false);
-                            }}
-                          >
-                            <FiEdit2 className="!h-4 !w-4" />
-                          </button>
-                        </Tooltip>
+                        <TooltipProvider delayDuration={1000}>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <HoverableIcon
+                                icon={<FiEdit2 className="text-text-600" />}
+                                onClick={() => {
+                                  setIsEditing(true);
+                                  setIsHovered(false);
+                                }}
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent>Edit</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       ) : (
                         <div className="w-7" />
                       )}
@@ -834,7 +1180,7 @@ export const HumanMessage = ({
                           !isEditing &&
                           (!files || files.length === 0)
                         ) && "ml-auto"
-                      } relative flex-none max-w-[70%] mb-auto whitespace-break-spaces rounded-3xl bg-user px-5 py-2.5`}
+                      } relative text-text flex-none max-w-[70%] mb-auto whitespace-break-spaces rounded-3xl bg-user px-5 py-2.5`}
                     >
                       {content}
                     </div>
@@ -866,24 +1212,22 @@ export const HumanMessage = ({
 
           <div className="flex flex-col md:flex-row gap-x-0.5 mt-1">
             {currentMessageInd !== undefined &&
+              otherMessage !== undefined &&
               onMessageSelection &&
               otherMessagesCanSwitchTo &&
               otherMessagesCanSwitchTo.length > 1 && (
                 <div className="ml-auto mr-3">
                   <MessageSwitcher
+                    disableForStreaming={disableSwitchingForStreaming}
                     currentPage={currentMessageInd + 1}
                     totalPages={otherMessagesCanSwitchTo.length}
                     handlePrevious={() => {
                       stopGenerating();
-                      onMessageSelection(
-                        otherMessagesCanSwitchTo[currentMessageInd - 1]
-                      );
+                      onMessageSelection(otherMessage!);
                     }}
                     handleNext={() => {
                       stopGenerating();
-                      onMessageSelection(
-                        otherMessagesCanSwitchTo[currentMessageInd + 1]
-                      );
+                      onMessageSelection(otherMessage!);
                     }}
                   />
                 </div>

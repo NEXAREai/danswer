@@ -3,17 +3,27 @@ import { StandardAnswerCreationForm } from "@/app/ee/admin/standard-answer/Stand
 import { fetchSS } from "@/lib/utilsSS";
 import { ErrorCallout } from "@/components/ErrorCallout";
 import { BackButton } from "@/components/BackButton";
-import { Text } from "@tremor/react";
 import { ClipboardIcon } from "@/components/icons/icons";
 import { StandardAnswer, StandardAnswerCategory } from "@/lib/types";
 
-async function Page({ params }: { params: { id: string } }) {
+async function Page(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const tasks = [
     fetchSS("/manage/admin/standard-answer"),
     fetchSS(`/manage/admin/standard-answer/category`),
   ];
   const [standardAnswersResponse, standardAnswerCategoriesResponse] =
     await Promise.all(tasks);
+
+  if (standardAnswersResponse === undefined) {
+    return (
+      <ErrorCallout
+        errorTitle="Something went wrong :("
+        errorMsg={`Failed to fetch standard answers.`}
+      />
+    );
+  }
+
   if (!standardAnswersResponse.ok) {
     return (
       <ErrorCallout
@@ -33,6 +43,15 @@ async function Page({ params }: { params: { id: string } }) {
       <ErrorCallout
         errorTitle="Something went wrong :("
         errorMsg={`Did not find standard answer with ID: ${params.id}`}
+      />
+    );
+  }
+
+  if (standardAnswerCategoriesResponse === undefined) {
+    return (
+      <ErrorCallout
+        errorTitle="Something went wrong :("
+        errorMsg={`Failed to fetch standard answer categories.`}
       />
     );
   }

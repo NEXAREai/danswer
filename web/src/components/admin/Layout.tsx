@@ -6,8 +6,13 @@ import {
 } from "@/lib/userSS";
 import { redirect } from "next/navigation";
 import { ClientLayout } from "./ClientLayout";
-import { SERVER_SIDE_ONLY__PAID_ENTERPRISE_FEATURES_ENABLED } from "@/lib/constants";
+import {
+  NEXT_PUBLIC_CLOUD_ENABLED,
+  SERVER_SIDE_ONLY__PAID_ENTERPRISE_FEATURES_ENABLED,
+} from "@/lib/constants";
 import { AnnouncementBanner } from "../header/AnnouncementBanner";
+import { fetchChatData } from "@/lib/chat/fetchChatData";
+import { ChatProvider } from "../context/ChatContext";
 
 export async function Layout({ children }: { children: React.ReactNode }) {
   const tasks = [getAuthTypeMetadataSS(), getCurrentUserSS()];
@@ -24,7 +29,6 @@ export async function Layout({ children }: { children: React.ReactNode }) {
 
   const authTypeMetadata = results[0] as AuthTypeMetadata | null;
   const user = results[1] as User | null;
-
   const authDisabled = authTypeMetadata?.authType === "disabled";
   const requiresVerification = authTypeMetadata?.requiresVerification;
 
@@ -33,20 +37,62 @@ export async function Layout({ children }: { children: React.ReactNode }) {
       return redirect("/auth/login");
     }
     if (user.role === UserRole.BASIC) {
-      return redirect("/");
+      return redirect("/chat");
     }
     if (!user.is_verified && requiresVerification) {
       return redirect("/auth/waiting-on-verification");
     }
   }
 
+  const data = await fetchChatData({});
+  if ("redirect" in data) {
+    redirect(data.redirect);
+  }
+
+  const {
+    chatSessions,
+    availableSources,
+    documentSets,
+    tags,
+    llmProviders,
+    folders,
+    openedFolders,
+    sidebarInitiallyVisible,
+    defaultAssistantId,
+    shouldShowWelcomeModal,
+    ccPairs,
+    inputPrompts,
+    proSearchToggled,
+  } = data;
+
   return (
-    <ClientLayout
-      enableEnterprise={SERVER_SIDE_ONLY__PAID_ENTERPRISE_FEATURES_ENABLED}
-      user={user}
+    <ChatProvider
+      value={{
+        inputPrompts,
+        chatSessions,
+        proSearchToggled,
+        sidebarInitiallyVisible,
+        availableSources,
+        ccPairs,
+        documentSets,
+        tags,
+        availableDocumentSets: documentSets,
+        availableTags: tags,
+        llmProviders,
+        folders,
+        openedFolders,
+        shouldShowWelcomeModal,
+        defaultAssistantId,
+      }}
     >
-      <AnnouncementBanner />
-      {children}
-    </ClientLayout>
+      <ClientLayout
+        enableEnterprise={SERVER_SIDE_ONLY__PAID_ENTERPRISE_FEATURES_ENABLED}
+        enableCloud={NEXT_PUBLIC_CLOUD_ENABLED}
+        user={user}
+      >
+        <AnnouncementBanner />
+        {children}
+      </ClientLayout>
+    </ChatProvider>
   );
 }

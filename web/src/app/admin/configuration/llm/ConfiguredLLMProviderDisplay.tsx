@@ -1,13 +1,14 @@
 import { PopupSpec, usePopup } from "@/components/admin/connectors/Popup";
-import { FullLLMProvider, WellKnownLLMProviderDescriptor } from "./interfaces";
+import { LLMProviderView, WellKnownLLMProviderDescriptor } from "./interfaces";
 import { Modal } from "@/components/Modal";
 import { LLMProviderUpdateForm } from "./LLMProviderUpdateForm";
 import { CustomLLMProviderUpdateForm } from "./CustomLLMProviderUpdateForm";
 import { useState } from "react";
 import { LLM_PROVIDERS_ADMIN_URL } from "./constants";
 import { mutate } from "swr";
-import { Badge, Button } from "@tremor/react";
-import isEqual from "lodash/isEqual";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { isSubset } from "@/lib/utils";
 
 function LLMProviderUpdateModal({
   llmProviderDescriptor,
@@ -18,20 +19,21 @@ function LLMProviderUpdateModal({
 }: {
   llmProviderDescriptor: WellKnownLLMProviderDescriptor | null | undefined;
   onClose: () => void;
-  existingLlmProvider?: FullLLMProvider;
+  existingLlmProvider?: LLMProviderView;
   shouldMarkAsDefault?: boolean;
   setPopup?: (popup: PopupSpec) => void;
 }) {
   const providerName = existingLlmProvider?.name
     ? `"${existingLlmProvider.name}"`
-    : null ||
-      llmProviderDescriptor?.display_name ||
+    : llmProviderDescriptor?.display_name ||
       llmProviderDescriptor?.name ||
       "Custom LLM Provider";
+
   return (
     <Modal
       title={`${llmProviderDescriptor ? "Configure" : "Setup"} ${providerName}`}
       onOutsideClick={() => onClose()}
+      hideOverflow={true}
     >
       <div className="max-h-[70vh] overflow-y-auto px-4">
         {llmProviderDescriptor ? (
@@ -61,7 +63,7 @@ function LLMProviderDisplay({
   shouldMarkAsDefault,
 }: {
   llmProviderDescriptor: WellKnownLLMProviderDescriptor | null | undefined;
-  existingLlmProvider: FullLLMProvider;
+  existingLlmProvider: LLMProviderView;
   shouldMarkAsDefault?: boolean;
 }) {
   const [formIsVisible, setFormIsVisible] = useState(false);
@@ -74,7 +76,7 @@ function LLMProviderDisplay({
   return (
     <div>
       {popup}
-      <div className="border border-border p-3 rounded w-96 flex shadow-md">
+      <div className="border border-border p-3 dark:bg-neutral-800 dark:border-neutral-700 rounded w-96 flex shadow-md">
         <div className="my-auto">
           <div className="font-bold">{providerName} </div>
           <div className="text-xs italic">({existingLlmProvider.provider})</div>
@@ -112,27 +114,23 @@ function LLMProviderDisplay({
         {existingLlmProvider && (
           <div className="my-auto ml-3">
             {existingLlmProvider.is_default_provider ? (
-              <Badge color="orange" size="xs">
-                Default
-              </Badge>
+              <Badge variant="agent">Default</Badge>
             ) : (
-              <Badge color="green" size="xs">
-                Enabled
-              </Badge>
+              <Badge variant="success">Enabled</Badge>
             )}
           </div>
         )}
 
         <div className="ml-auto">
           <Button
-            color={existingLlmProvider ? "green" : "blue"}
-            size="xs"
+            variant={existingLlmProvider ? "success-reverse" : "navigate"}
             onClick={() => setFormIsVisible(true)}
           >
             {existingLlmProvider ? "Edit" : "Set up"}
           </Button>
         </div>
       </div>
+
       {formIsVisible && (
         <LLMProviderUpdateModal
           llmProviderDescriptor={llmProviderDescriptor}
@@ -150,7 +148,7 @@ export function ConfiguredLLMProviderDisplay({
   existingLlmProviders,
   llmProviderDescriptors,
 }: {
-  existingLlmProviders: FullLLMProvider[];
+  existingLlmProviders: LLMProviderView[];
   llmProviderDescriptors: WellKnownLLMProviderDescriptor[];
 }) {
   existingLlmProviders = existingLlmProviders.sort((a, b) => {
@@ -178,7 +176,16 @@ export function ConfiguredLLMProviderDisplay({
             // then the provider is custom - don't use the default
             // provider descriptor
             llmProviderDescriptor={
-              isEqual(provider.model_names, defaultProviderDesciptor?.llm_names)
+              isSubset(
+                defaultProviderDesciptor
+                  ? defaultProviderDesciptor.model_configurations.map(
+                      (model_configuration) => model_configuration.name
+                    )
+                  : [],
+                provider.model_configurations.map(
+                  (model_configuration) => model_configuration.name
+                )
+              )
                 ? defaultProviderDesciptor
                 : null
             }

@@ -5,12 +5,13 @@ Revises: baf71f781b9e
 Create Date: 2023-12-12 00:57:41.823371
 
 """
+
 import fastapi_users_db_sqlalchemy
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import ENUM
-from danswer.configs.constants import DocumentSource
+from onyx.configs.constants import DocumentSource
 
 # revision identifiers, used by Alembic.
 revision = "b156fa702355"
@@ -288,6 +289,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # NOTE: you will lose all chat history. This is to satisfy the non-nullable constraints
+    # below
+    op.execute("DELETE FROM chat_feedback")
+    op.execute("DELETE FROM chat_message__search_doc")
+    op.execute("DELETE FROM document_retrieval_feedback")
+    op.execute("DELETE FROM document_retrieval_feedback")
+    op.execute("DELETE FROM chat_message")
+    op.execute("DELETE FROM chat_session")
+
     op.drop_constraint(
         "chat_feedback__chat_message_fk", "chat_feedback", type_="foreignkey"
     )

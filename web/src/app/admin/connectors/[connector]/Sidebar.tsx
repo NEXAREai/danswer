@@ -1,19 +1,54 @@
 import { useFormContext } from "@/components/context/FormContext";
 import { HeaderTitle } from "@/components/header/HeaderTitle";
 
-import { BackIcon, SettingsIcon } from "@/components/icons/icons";
-import { Logo } from "@/components/Logo";
+import { SettingsIcon } from "@/components/icons/icons";
+import { Logo } from "@/components/logo/Logo";
 import { SettingsContext } from "@/components/settings/SettingsProvider";
 import { credentialTemplates } from "@/lib/connectors/credentials";
 import Link from "next/link";
 import { useUser } from "@/components/user/UserProvider";
 import { useContext } from "react";
+import { User } from "@/lib/types";
+
+function BackButton({
+  isAdmin,
+  isCurator,
+  user,
+}: {
+  isAdmin: boolean;
+  isCurator: boolean;
+  user: User | null;
+}) {
+  const buttonText = isAdmin ? "Admin Page" : "Curator Page";
+
+  if (!isAdmin && !isCurator) {
+    console.error(
+      `User is neither admin nor curator, defaulting to curator view. Found user:\n ${JSON.stringify(
+        user,
+        null,
+        2
+      )}`
+    );
+  }
+
+  return (
+    <div className="mx-3 mt-6 flex-col flex items-center">
+      <Link
+        href={"/admin/add-connector"}
+        className="w-full p-2 bg-white border-border border rounded items-center hover:bg-background-200 cursor-pointer transition-all duration-150 flex gap-x-2"
+      >
+        <SettingsIcon className="flex-none " />
+        <p className="my-auto flex items-center text-sm">{buttonText}</p>
+      </Link>
+    </div>
+  );
+}
 
 export default function Sidebar() {
   const { formStep, setFormStep, connector, allowAdvanced, allowCreate } =
     useFormContext();
   const combinedSettings = useContext(SettingsContext);
-  const { isLoadingUser, isAdmin } = useUser();
+  const { isCurator, isAdmin, user } = useUser();
   if (!combinedSettings) {
     return null;
   }
@@ -27,11 +62,11 @@ export default function Sidebar() {
   ];
 
   return (
-    <div className="flex flex-none w-[250px] bg-background text-default">
+    <div className="flex flex-none w-[250px] text-default">
       <div
         className={`
                   fixed
-                  bg-background-100
+                  bg-background-sidebar
                   h-screen
                   transition-all
                   bg-opacity-80
@@ -50,28 +85,18 @@ export default function Sidebar() {
               {enterpriseSettings && enterpriseSettings.application_name ? (
                 <HeaderTitle>{enterpriseSettings.application_name}</HeaderTitle>
               ) : (
-                <HeaderTitle>Danswer</HeaderTitle>
+                <HeaderTitle>Onyx</HeaderTitle>
               )}
             </div>
           </div>
 
-          <div className="mx-3 mt-6 gap-y-1 flex-col flex gap-x-1.5 items-center items-center">
-            <Link
-              href={"/admin/add-connector"}
-              className="w-full p-2 bg-white border-border border rounded items-center hover:bg-background-200 cursor-pointer transition-all duration-150 flex gap-x-2"
-            >
-              <SettingsIcon className="flex-none " />
-              <p className="my-auto flex items-center text-sm">
-                {isAdmin ? "Admin Page" : "Curator Page"}
-              </p>
-            </Link>
-          </div>
+          <BackButton isAdmin={isAdmin} isCurator={isCurator} user={user} />
 
           <div className="h-full flex">
             <div className="mx-auto w-full max-w-2xl px-4 py-8">
               <div className="relative">
                 {connector != "file" && (
-                  <div className="absolute h-[85%] left-[6px] top-[8px] bottom-0 w-0.5 bg-gray-300"></div>
+                  <div className="absolute h-[85%] left-[6px] top-[8px] bottom-0 w-0.5 bg-background-300"></div>
                 )}
                 {settingSteps.map((step, index) => {
                   const allowed =
@@ -94,7 +119,7 @@ export default function Sidebar() {
                       <div className="flex-shrink-0 mr-4 z-10">
                         <div
                           className={`rounded-full h-3.5 w-3.5 flex items-center justify-center ${
-                            allowed ? "bg-blue-500" : "bg-gray-300"
+                            allowed ? "bg-blue-500" : "bg-background-300"
                           }`}
                         >
                           {formStep === index && (
@@ -104,7 +129,7 @@ export default function Sidebar() {
                       </div>
                       <div
                         className={`${
-                          index <= formStep ? "text-gray-800" : "text-gray-500"
+                          index <= formStep ? "text-text-800" : "text-text-500"
                         }`}
                       >
                         {step}

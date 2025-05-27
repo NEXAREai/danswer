@@ -1,12 +1,24 @@
 import { usePaidEnterpriseFeaturesEnabled } from "@/components/settings/usePaidEnterpriseFeaturesEnabled";
 import React, { useState, useEffect } from "react";
 import { FieldArray, ArrayHelpers, ErrorMessage, useField } from "formik";
-import { Text, Divider } from "@tremor/react";
+import Text from "@/components/ui/text";
+import { Separator } from "@/components/ui/separator";
 import { FiUsers } from "react-icons/fi";
-import { UserGroup, User, UserRole } from "@/lib/types";
+import { UserGroup, UserRole } from "@/lib/types";
 import { useUserGroups } from "@/lib/hooks";
-import { AccessType } from "@/lib/types";
+import {
+  AccessType,
+  ValidAutoSyncSource,
+  ConfigurableSources,
+  validAutoSyncSources,
+} from "@/lib/types";
 import { useUser } from "@/components/user/UserProvider";
+
+function isValidAutoSyncSource(
+  value: ConfigurableSources
+): value is ValidAutoSyncSource {
+  return validAutoSyncSources.includes(value as ValidAutoSyncSource);
+}
 
 // This should be included for all forms that require groups / public access
 // to be set, and access to this / permissioning should be handled within this component itself.
@@ -16,11 +28,16 @@ export type AccessTypeGroupSelectorFormType = {
   groups: number[];
 };
 
-export function AccessTypeGroupSelector({}: {}) {
+export function AccessTypeGroupSelector({
+  connector,
+}: {
+  connector: ConfigurableSources;
+}) {
   const { data: userGroups, isLoading: userGroupsIsLoading } = useUserGroups();
-  const { isAdmin, user, isLoadingUser, isCurator } = useUser();
+  const { isAdmin, user, isCurator } = useUser();
   const isPaidEnterpriseFeaturesEnabled = usePaidEnterpriseFeaturesEnabled();
   const [shouldHideContent, setShouldHideContent] = useState(false);
+  const isAutoSyncSupported = isValidAutoSyncSource(connector);
 
   const [access_type, meta, access_type_helpers] =
     useField<AccessType>("access_type");
@@ -33,22 +50,35 @@ export function AccessTypeGroupSelector({}: {}) {
         access_type_helpers.setValue("public");
         return;
       }
-      if (!isUserAdmin) {
+      if (!isUserAdmin && !isAutoSyncSupported) {
         access_type_helpers.setValue("private");
       }
-      if (userGroups.length === 1 && !isUserAdmin) {
+      if (
+        access_type.value === "private" &&
+        userGroups.length === 1 &&
+        userGroups[0] !== undefined &&
+        !isUserAdmin
+      ) {
         groups_helpers.setValue([userGroups[0].id]);
         setShouldHideContent(true);
       } else if (access_type.value !== "private") {
+        // If the access type is public or sync, empty the groups selection
         groups_helpers.setValue([]);
         setShouldHideContent(false);
       } else {
         setShouldHideContent(false);
       }
     }
-  }, [user, userGroups, access_type.value]);
+  }, [
+    user,
+    userGroups,
+    access_type.value,
+    access_type_helpers,
+    groups_helpers,
+    isPaidEnterpriseFeaturesEnabled,
+  ]);
 
-  if (isLoadingUser || userGroupsIsLoading) {
+  if (userGroupsIsLoading) {
     return <div>Loading...</div>;
   }
   if (!isPaidEnterpriseFeaturesEnabled) {
@@ -58,7 +88,7 @@ export function AccessTypeGroupSelector({}: {}) {
   if (shouldHideContent) {
     return (
       <>
-        {userGroups && (
+        {userGroups && userGroups[0] !== undefined && (
           <div className="mb-1 font-medium text-base">
             This Connector will be assigned to group <b>{userGroups[0].name}</b>
             .
@@ -74,14 +104,14 @@ export function AccessTypeGroupSelector({}: {}) {
         userGroups &&
         userGroups?.length > 0 && (
           <>
-            <Divider />
+            <Separator />
             <div className="flex mt-4 gap-x-2 items-center">
               <div className="block font-medium text-base">
                 Assign group access for this Connector
               </div>
             </div>
             {userGroupsIsLoading ? (
-              <div className="animate-pulse bg-gray-200 h-8 w-32 rounded"></div>
+              <div className="animate-pulse bg-background-200 h-8 w-32 rounded"></div>
             ) : (
               <Text className="mb-3">
                 {isAdmin ? (
@@ -102,7 +132,7 @@ export function AccessTypeGroupSelector({}: {}) {
               render={(arrayHelpers: ArrayHelpers) => (
                 <div className="flex gap-2 flex-wrap mb-4">
                   {userGroupsIsLoading ? (
-                    <div className="animate-pulse bg-gray-200 h-8 w-32 rounded"></div>
+                    <div className="animate-pulse bg-background-200 h-8 w-32 rounded"></div>
                   ) : (
                     userGroups &&
                     userGroups.map((userGroup: UserGroup) => {
@@ -120,7 +150,11 @@ export function AccessTypeGroupSelector({}: {}) {
                             w-fit 
                             flex 
                             cursor-pointer 
-                            ${isSelected ? "bg-background-strong" : "hover:bg-hover"}
+                            ${
+                              isSelected
+                                ? "bg-background-200"
+                                : "hover:bg-accent-background-hovered"
+                            }
                         `}
                           onClick={() => {
                             if (isSelected) {

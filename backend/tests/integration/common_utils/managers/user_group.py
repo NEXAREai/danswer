@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import requests
 
-from ee.danswer.server.user_group.models import UserGroup
+from ee.onyx.server.user_group.models import UserGroup
 from tests.integration.common_utils.constants import API_SERVER_URL
 from tests.integration.common_utils.constants import GENERAL_HEADERS
 from tests.integration.common_utils.constants import MAX_DELAY
@@ -29,9 +29,11 @@ class UserGroupManager:
         response = requests.post(
             f"{API_SERVER_URL}/manage/admin/user-group",
             json=request,
-            headers=user_performing_action.headers
-            if user_performing_action
-            else GENERAL_HEADERS,
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
         )
         response.raise_for_status()
         test_user_group = DATestUserGroup(
@@ -50,9 +52,11 @@ class UserGroupManager:
         response = requests.patch(
             f"{API_SERVER_URL}/manage/admin/user-group/{user_group.id}",
             json=user_group.model_dump(),
-            headers=user_performing_action.headers
-            if user_performing_action
-            else GENERAL_HEADERS,
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
         )
         response.raise_for_status()
 
@@ -63,9 +67,11 @@ class UserGroupManager:
     ) -> None:
         response = requests.delete(
             f"{API_SERVER_URL}/manage/admin/user-group/{user_group.id}",
-            headers=user_performing_action.headers
-            if user_performing_action
-            else GENERAL_HEADERS,
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
         )
         response.raise_for_status()
 
@@ -83,9 +89,11 @@ class UserGroupManager:
         response = requests.post(
             f"{API_SERVER_URL}/manage/admin/user-group/{test_user_group.id}/set-curator",
             json=set_curator_request,
-            headers=user_performing_action.headers
-            if user_performing_action
-            else GENERAL_HEADERS,
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
         )
         response.raise_for_status()
 
@@ -95,9 +103,11 @@ class UserGroupManager:
     ) -> list[UserGroup]:
         response = requests.get(
             f"{API_SERVER_URL}/manage/admin/user-group",
-            headers=user_performing_action.headers
-            if user_performing_action
-            else GENERAL_HEADERS,
+            headers=(
+                user_performing_action.headers
+                if user_performing_action
+                else GENERAL_HEADERS
+            ),
         )
         response.raise_for_status()
         return [UserGroup(**ug) for ug in response.json()]
@@ -146,6 +156,7 @@ class UserGroupManager:
                     if user_group.id in check_ids
                 ]
             if all(ug.is_up_to_date for ug in user_groups):
+                print("User groups synced successfully.")
                 return
 
             if time.time() - start > MAX_DELAY:

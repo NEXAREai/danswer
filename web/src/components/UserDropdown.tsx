@@ -1,22 +1,22 @@
 "use client";
 
-import { useState, useRef, useContext, useEffect } from "react";
+import { useState, useRef, useContext, useEffect, useMemo } from "react";
 import { FiLogOut } from "react-icons/fi";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { User, UserRole } from "@/lib/types";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { UserRole } from "@/lib/types";
 import { checkUserIsNoAuthUser, logout } from "@/lib/user";
 import { Popover } from "./popover/Popover";
 import { LOGOUT_DISABLED } from "@/lib/constants";
 import { SettingsContext } from "./settings/SettingsProvider";
-import {
-  AssistantsIconSkeleton,
-  LightSettingsIcon,
-  UsersIcon,
-} from "./icons/icons";
+import { BellIcon, LightSettingsIcon, UserIcon } from "./icons/icons";
 import { pageType } from "@/app/chat/sessionSidebar/types";
-import { NavigationItem } from "@/app/admin/settings/interfaces";
+import { NavigationItem, Notification } from "@/app/admin/settings/interfaces";
 import DynamicFaIcon, { preloadIcons } from "./icons/DynamicFaIcon";
+import { useUser } from "./user/UserProvider";
+import { Notifications } from "./chat/Notifications";
+import useSWR from "swr";
+import { errorHandlingFetcher } from "@/lib/fetcher";
 
 interface DropdownOptionProps {
   href?: string;
@@ -34,7 +34,7 @@ const DropdownOption: React.FC<DropdownOptionProps> = ({
   openInNewTab,
 }) => {
   const content = (
-    <div className="flex py-3 px-4 cursor-pointer rounded hover:bg-hover-light">
+    <div className="flex py-1.5 text-sm px-2 gap-x-2 text-black text-sm cursor-pointer rounded hover:bg-background-300">
       {icon}
       {label}
     </div>
@@ -56,19 +56,32 @@ const DropdownOption: React.FC<DropdownOptionProps> = ({
 };
 
 export function UserDropdown({
-  user,
   page,
+  toggleUserSettings,
+  hideUserDropdown,
 }: {
-  user: User | null;
   page?: pageType;
+  toggleUserSettings?: () => void;
+  hideUserDropdown?: boolean;
 }) {
+  const { user, isCurator } = useUser();
   const [userInfoVisible, setUserInfoVisible] = useState(false);
   const userInfoRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const combinedSettings = useContext(SettingsContext);
-  const customNavItems: NavigationItem[] =
-    combinedSettings?.enterpriseSettings?.custom_nav_items || [];
+  const customNavItems: NavigationItem[] = useMemo(
+    () => combinedSettings?.enterpriseSettings?.custom_nav_items || [],
+    [combinedSettings]
+  );
+  const {
+    data: notifications,
+    error,
+    mutate: refreshNotifications,
+  } = useSWR<Notification[]>("/api/notifications", errorHandlingFetcher);
 
   useEffect(() => {
     const iconNames = customNavItems
@@ -85,137 +98,199 @@ export function UserDropdown({
     logout().then((isSuccess) => {
       if (!isSuccess) {
         alert("Failed to logout");
+        return;
       }
-      router.push("/auth/login");
+
+      // Construct the current URL
+      const currentUrl = `${pathname}${
+        searchParams?.toString() ? `?${searchParams.toString()}` : ""
+      }`;
+
+      // Encode the current URL to use as a redirect parameter
+      const encodedRedirect = encodeURIComponent(currentUrl);
+
+      // Redirect to login page with the current page as a redirect parameter
+      router.push(`/auth/login?next=${encodedRedirect}`);
     });
   };
 
   const showAdminPanel = !user || user.role === UserRole.ADMIN;
-  const showCuratorPanel =
-    user &&
-    (user.role === UserRole.CURATOR || user.role === UserRole.GLOBAL_CURATOR);
+
+  const showCuratorPanel = user && isCurator;
   const showLogout =
     user && !checkUserIsNoAuthUser(user.id) && !LOGOUT_DISABLED;
+
+  const onOpenChange = (open: boolean) => {
+    setUserInfoVisible(open);
+    setShowNotifications(false);
+  };
 
   return (
     <div className="group relative" ref={userInfoRef}>
       <Popover
         open={userInfoVisible}
-        onOpenChange={setUserInfoVisible}
+        onOpenChange={onOpenChange}
         content={
           <div
+            id="onyx-user-dropdown"
             onClick={() => setUserInfoVisible(!userInfoVisible)}
-            className="flex cursor-pointer"
+            className="flex relative cursor-pointer"
           >
             <div
               className="
                 my-auto
-                bg-background-strong
+                bg-background-900
                 ring-2
                 ring-transparent
                 group-hover:ring-background-300/50
                 transition-ring
                 duration-150
-                rounded-lg
+                rounded-full
                 inline-block
                 flex-none
-                px-2
+                w-6
+                h-6
+                flex
+                items-center
+                justify-center
+                text-white
                 text-base
               "
             >
-              {user && user.email ? user.email[0].toUpperCase() : "A"}
+              {user && user.email
+                ? user.email[0] !== undefined && user.email[0].toUpperCase()
+                : "A"}
             </div>
+            {notifications && notifications.length > 0 && (
+              <div className="absolute -right-0.5 -top-0.5 w-3 h-3 bg-red-500 rounded-full"></div>
+            )}
           </div>
         }
         popover={
           <div
             className={`
                 p-2
-                min-w-[200px]
+                ${page != "admin" && showNotifications ? "w-72" : "w-[175px]"}
                 text-strong 
                 text-sm
                 border 
                 border-border 
                 bg-background
+                dark:bg-[#2F2F2F]
                 rounded-lg
                 shadow-lg 
                 flex 
                 flex-col 
-                w-full 
                 max-h-96 
                 overflow-y-auto 
                 p-1
                 overscroll-contain
               `}
           >
-            {customNavItems.map((item, i) => (
+            {page != "admin" && showNotifications ? (
+              <Notifications
+                navigateToDropdown={() => setShowNotifications(false)}
+                notifications={notifications || []}
+                refreshNotifications={refreshNotifications}
+              />
+            ) : hideUserDropdown ? (
               <DropdownOption
-                key={i}
-                href={item.link}
-                icon={
-                  item.svg_logo ? (
-                    <div
-                      className="
+                onClick={() => router.push("/auth/login")}
+                icon={<UserIcon className="h-5w-5 my-auto " />}
+                label="Log In"
+              />
+            ) : (
+              <>
+                {customNavItems.map((item, i) => (
+                  <DropdownOption
+                    key={i}
+                    href={item.link}
+                    icon={
+                      item.svg_logo ? (
+                        <div
+                          className="
                         h-4
                         w-4
                         my-auto
-                        mr-2
                         overflow-hidden
                         flex
                         items-center
                         justify-center
                       "
-                      aria-label={item.title}
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        width="100%"
-                        height="100%"
-                        preserveAspectRatio="xMidYMid meet"
-                        dangerouslySetInnerHTML={{ __html: item.svg_logo }}
-                      />
-                    </div>
-                  ) : (
-                    <DynamicFaIcon
-                      name={item.icon!}
-                      className="h-4 w-4 my-auto mr-2"
+                          aria-label={item.title}
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            width="100%"
+                            height="100%"
+                            preserveAspectRatio="xMidYMid meet"
+                            dangerouslySetInnerHTML={{ __html: item.svg_logo }}
+                          />
+                        </div>
+                      ) : (
+                        <DynamicFaIcon
+                          name={item.icon!}
+                          className="h-4 w-4 my-auto "
+                        />
+                      )
+                    }
+                    label={item.title}
+                    openInNewTab
+                  />
+                ))}
+
+                {showAdminPanel ? (
+                  <DropdownOption
+                    href="/admin/indexing/status"
+                    icon={<LightSettingsIcon size={16} className="my-auto" />}
+                    label="Admin Panel"
+                  />
+                ) : (
+                  showCuratorPanel && (
+                    <DropdownOption
+                      href="/admin/indexing/status"
+                      icon={<LightSettingsIcon size={16} className="my-auto" />}
+                      label="Curator Panel"
                     />
                   )
-                }
-                label={item.title}
-                openInNewTab
-              />
-            ))}
+                )}
 
-            {showAdminPanel ? (
-              <DropdownOption
-                href="/admin/indexing/status"
-                icon={<LightSettingsIcon className="h-5 w-5 my-auto mr-2" />}
-                label="Admin Panel"
-              />
-            ) : (
-              showCuratorPanel && (
+                {toggleUserSettings && (
+                  <DropdownOption
+                    onClick={toggleUserSettings}
+                    icon={<UserIcon size={16} className="my-auto" />}
+                    label="User Settings"
+                  />
+                )}
+
                 <DropdownOption
-                  href="/admin/indexing/status"
-                  icon={<LightSettingsIcon className="h-5 w-5 my-auto mr-2" />}
-                  label="Curator Panel"
+                  onClick={() => {
+                    setUserInfoVisible(true);
+                    setShowNotifications(true);
+                  }}
+                  icon={<BellIcon size={16} className="my-auto" />}
+                  label={`Notifications ${
+                    notifications && notifications.length > 0
+                      ? `(${notifications.length})`
+                      : ""
+                  }`}
                 />
-              )
-            )}
 
-            {showLogout &&
-              (showCuratorPanel ||
-                showAdminPanel ||
-                customNavItems.length > 0) && (
-                <div className="border-t border-border my-1" />
-              )}
+                {showLogout &&
+                  (showCuratorPanel ||
+                    showAdminPanel ||
+                    customNavItems.length > 0) && (
+                    <div className="border-t border-border my-1" />
+                  )}
 
-            {showLogout && (
-              <DropdownOption
-                onClick={handleLogout}
-                icon={<FiLogOut className="my-auto mr-2 text-lg" />}
-                label="Log out"
-              />
+                {showLogout && (
+                  <DropdownOption
+                    onClick={handleLogout}
+                    icon={<FiLogOut size={16} className="my-auto" />}
+                    label="Log out"
+                  />
+                )}
+              </>
             )}
           </div>
         }

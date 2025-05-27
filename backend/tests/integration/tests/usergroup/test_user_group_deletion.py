@@ -8,7 +8,12 @@ This tests the deletion of a user group with the following foreign key constrain
 - token_rate_limit (Not Implemented)
 - persona
 """
-from danswer.server.documents.models import DocumentSource
+
+import os
+
+import pytest
+
+from onyx.server.documents.models import DocumentSource
 from tests.integration.common_utils.managers.cc_pair import CCPairManager
 from tests.integration.common_utils.managers.credential import CredentialManager
 from tests.integration.common_utils.managers.document_set import DocumentSetManager
@@ -25,6 +30,10 @@ from tests.integration.common_utils.test_models import DATestUserGroup
 from tests.integration.common_utils.vespa import vespa_fixture
 
 
+@pytest.mark.skipif(
+    os.environ.get("ENABLE_PAID_ENTERPRISE_EDITION_FEATURES", "").lower() != "true",
+    reason="User group tests are enterprise only",
+)
 def test_user_group_deletion(reset: None, vespa_client: vespa_fixture) -> None:
     # Creating an admin user (first user created is automatically an admin)
     admin_user: DATestUser = UserManager.create(name="admin_user")
@@ -55,6 +64,7 @@ def test_user_group_deletion(reset: None, vespa_client: vespa_fixture) -> None:
         user_performing_action=admin_user,
     )
 
+    # Create other objects that are related to the user group
     credential: DATestCredential = CredentialManager.create(
         groups=[user_group.id],
         user_performing_action=admin_user,
@@ -81,6 +91,7 @@ def test_user_group_deletion(reset: None, vespa_client: vespa_fixture) -> None:
         user_performing_action=admin_user,
     )
 
+    # Delete the user group
     UserGroupManager.delete(
         user_group=user_group,
         user_performing_action=admin_user,
@@ -90,10 +101,13 @@ def test_user_group_deletion(reset: None, vespa_client: vespa_fixture) -> None:
         user_groups_to_check=[user_group], user_performing_action=admin_user
     )
 
+    # Set our expected local representations to empty
     credential.groups = []
     document_set.groups = []
     llm_provider.groups = []
     persona.groups = []
+
+    # Verify that the local representations were updated
     CredentialManager.verify(
         credential=credential,
         user_performing_action=admin_user,

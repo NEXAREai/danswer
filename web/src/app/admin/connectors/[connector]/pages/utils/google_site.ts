@@ -2,6 +2,7 @@ import { PopupSpec } from "@/components/admin/connectors/Popup";
 import { createConnector, runConnector } from "@/lib/connector";
 import { linkCredential } from "@/lib/credential";
 import { GoogleSitesConfig } from "@/lib/connectors/connectors";
+import { ValidSources } from "@/lib/types";
 
 export const submitGoogleSite = async (
   selectedFiles: File[],
@@ -10,7 +11,8 @@ export const submitGoogleSite = async (
   refreshFreq: number,
   pruneFreq: number,
   indexingStart: Date,
-  is_public: boolean,
+  access_type: string,
+  groups: number[],
   name?: string
 ) => {
   const uploadCreateAndTriggerConnector = async () => {
@@ -34,16 +36,35 @@ export const submitGoogleSite = async (
     }
 
     const filePaths = responseJson.file_paths as string[];
+    if (!filePaths || filePaths.length === 0) {
+      setPopup({
+        message:
+          "File upload was successful, but no file path was returned. Cannot create connector.",
+        type: "error",
+      });
+      return false;
+    }
+
+    const filePath = filePaths[0];
+    if (filePath === undefined) {
+      setPopup({
+        message:
+          "File upload was successful, but file path is undefined. Cannot create connector.",
+        type: "error",
+      });
+      return false;
+    }
+
     const [connectorErrorMsg, connector] =
       await createConnector<GoogleSitesConfig>({
         name: name ? name : `GoogleSitesConnector-${base_url}`,
-        source: "google_sites",
+        source: ValidSources.GoogleSites,
         input_type: "load_state",
         connector_specific_config: {
           base_url: base_url,
-          zip_path: filePaths[0],
+          zip_path: filePath,
         },
-        is_public: is_public,
+        access_type: access_type,
         refresh_freq: refreshFreq,
         prune_freq: pruneFreq,
         indexing_start: indexingStart,
@@ -56,7 +77,13 @@ export const submitGoogleSite = async (
       return false;
     }
 
-    const credentialResponse = await linkCredential(connector.id, 0, base_url);
+    const credentialResponse = await linkCredential(
+      connector.id,
+      0,
+      base_url,
+      undefined,
+      groups
+    );
     if (!credentialResponse.ok) {
       const credentialResponseJson = await credentialResponse.json();
       setPopup({

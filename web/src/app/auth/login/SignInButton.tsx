@@ -9,7 +9,7 @@ export function SignInButton({
   authType: AuthType;
 }) {
   let button;
-  if (authType === "google_oauth") {
+  if (authType === "google_oauth" || authType === "cloud") {
     button = (
       <div className="mx-auto flex">
         <div className="my-auto mr-2">
@@ -36,14 +36,18 @@ export function SignInButton({
     );
   }
 
+  const url = new URL(authorizeUrl);
+
+  const finalAuthorizeUrl = url.toString();
+
   if (!button) {
     throw new Error(`Unhandled authType: ${authType}`);
   }
 
   return (
     <a
-      className="mt-6 py-3 w-72 text-text-100 bg-accent flex rounded cursor-pointer hover:bg-indigo-800"
-      href={authorizeUrl}
+      className="mx-auto mb-4 mt-6 py-3 w-full dark:text-neutral-300 text-neutral-600 border border-neutral-300 flex rounded cursor-pointer hover:border-neutral-400 transition-colors"
+      href={finalAuthorizeUrl}
     >
       {button}
     </a>

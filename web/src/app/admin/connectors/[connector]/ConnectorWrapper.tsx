@@ -1,11 +1,11 @@
 "use client";
 
-import { ConfigurableSources, ValidSources } from "@/lib/types";
+import { ConfigurableSources } from "@/lib/types";
 import AddConnector from "./AddConnectorPage";
 import { FormProvider } from "@/components/context/FormContext";
 import Sidebar from "./Sidebar";
 import { HeaderTitle } from "@/components/header/HeaderTitle";
-import { Button } from "@tremor/react";
+import { Button } from "@/components/ui/button";
 import { isValidSource } from "@/lib/sources";
 
 export default function ConnectorWrapper({

@@ -2,11 +2,12 @@ import {
   ChangeEvent,
   FC,
   forwardRef,
+  useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
-import { ChevronDownIcon } from "./icons/icons";
+import { ChevronDownIcon, PlusIcon } from "./icons/icons";
 import { FiCheck, FiChevronDown } from "react-icons/fi";
 import { Popover } from "./popover/Popover";
 
@@ -32,16 +33,14 @@ function StandardDropdownOption<T>({
   return (
     <button
       onClick={() => handleSelect(option)}
-      className={`w-full text-left block px-4 py-2.5 text-sm hover:bg-gray-800 ${
-        index !== 0 ? " border-t-2 border-gray-600" : ""
+      className={`w-full text-left block px-4 py-2.5 text-sm bg-white dark:bg-neutral-800 hover:bg-background-50 ${
+        index !== 0 ? "border-t border-background-200" : ""
       }`}
       role="menuitem"
     >
-      <p className="font-medium">{option.name}</p>
+      <p className="font-medium  text-xs text-text-900">{option.name}</p>
       {option.description && (
-        <div>
-          <p className="text-xs text-gray-300">{option.description}</p>
-        </div>
+        <p className="text-xs text-text-500">{option.description}</p>
       )}
     </button>
   );
@@ -51,13 +50,23 @@ export function SearchMultiSelectDropdown({
   options,
   onSelect,
   itemComponent,
+  onCreate,
+  onDelete,
+  onSearchTermChange,
+  initialSearchTerm = "",
+  allowCustomValues = false,
 }: {
   options: StringOrNumberOption[];
   onSelect: (selected: StringOrNumberOption) => void;
   itemComponent?: FC<{ option: StringOrNumberOption }>;
+  onCreate?: (name: string) => void;
+  onDelete?: (name: string) => void;
+  onSearchTermChange?: (term: string) => void;
+  initialSearchTerm?: string;
+  allowCustomValues?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleSelect = (option: StringOrNumberOption) => {
@@ -70,12 +79,29 @@ export function SearchMultiSelectDropdown({
     option.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Handle selecting a custom value not in the options list
+  const handleCustomValueSelect = () => {
+    if (allowCustomValues && searchTerm.trim() !== "") {
+      const customOption: StringOrNumberOption = {
+        name: searchTerm,
+        value: searchTerm,
+      };
+      onSelect(customOption);
+      setIsOpen(false);
+    }
+  };
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(event.target as Node)
       ) {
+        // If allowCustomValues is enabled and there's text in the search field,
+        // treat clicking outside as selecting the custom value
+        if (allowCustomValues && searchTerm.trim() !== "") {
+          handleCustomValueSelect();
+        }
         setIsOpen(false);
       }
     };
@@ -84,104 +110,130 @@ export function SearchMultiSelectDropdown({
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, []);
+  }, [allowCustomValues, searchTerm]);
+
+  useEffect(() => {
+    setSearchTerm(initialSearchTerm);
+  }, [initialSearchTerm]);
 
   return (
-    <div className="relative inline-block text-left w-full" ref={dropdownRef}>
+    <div className="relative text-left w-full" ref={dropdownRef}>
       <div>
         <input
           type="text"
-          placeholder="Search..."
+          placeholder={
+            allowCustomValues ? "Search or enter custom value..." : "Search..."
+          }
           value={searchTerm}
           onChange={(e: ChangeEvent<HTMLInputElement>) => {
-            if (!searchTerm) {
-              setIsOpen(true);
+            const newValue = e.target.value;
+            setSearchTerm(newValue);
+            if (onSearchTermChange) {
+              onSearchTermChange(newValue);
             }
-            if (!e.target.value) {
+            if (newValue) {
+              setIsOpen(true);
+            } else {
               setIsOpen(false);
             }
-            setSearchTerm(e.target.value);
           }}
           onFocus={() => setIsOpen(true)}
-          className={`inline-flex 
-          justify-between 
-          w-full 
-          px-4 
-          py-2 
-          text-sm 
-          bg-background
-          border
-          border-border
-          rounded-md 
-          shadow-sm 
-          `}
-          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (
+              e.key === "Enter" &&
+              allowCustomValues &&
+              searchTerm.trim() !== ""
+            ) {
+              e.preventDefault();
+              handleCustomValueSelect();
+            }
+          }}
+          className="inline-flex justify-between w-full px-4 py-2 text-sm bg-white dark:bg-transparent text-text-800 border border-background-300 rounded-md shadow-sm"
         />
         <button
           type="button"
-          className={`absolute top-0 right-0 
-            text-sm 
-            h-full px-2 border-l border-border`}
-          aria-expanded="true"
+          className="absolute top-0 right-0 text-sm h-full px-2 border-l border-background-300"
+          aria-expanded={isOpen}
           aria-haspopup="true"
           onClick={() => setIsOpen(!isOpen)}
         >
-          <ChevronDownIcon className="my-auto" />
+          <ChevronDownIcon className="my-auto w-4 h-4 text-text-600" />
         </button>
       </div>
 
       {isOpen && (
-        <div
-          className={`origin-top-right
-            absolute
-            left-0
-            mt-3
-            w-full
-            rounded-md
-            shadow-lg
-            bg-background
-            border
-            border-border
-            max-h-80
-            overflow-y-auto
-            overscroll-contain`}
-        >
+        <div className="absolute z-10 mt-1 w-full rounded-md shadow-lg bg-white border border-background-300 max-h-60 overflow-y-auto">
           <div
             role="menu"
             aria-orientation="vertical"
             aria-labelledby="options-menu"
           >
-            {filteredOptions.length ? (
-              filteredOptions.map((option, index) =>
-                itemComponent ? (
-                  <div
-                    key={option.name}
+            {filteredOptions.map((option, index) =>
+              itemComponent ? (
+                <div
+                  key={option.name}
+                  onClick={() => {
+                    handleSelect(option);
+                  }}
+                >
+                  {itemComponent({ option })}
+                </div>
+              ) : (
+                <StandardDropdownOption
+                  key={index}
+                  option={option}
+                  index={index}
+                  handleSelect={handleSelect}
+                />
+              )
+            )}
+
+            {allowCustomValues &&
+              searchTerm.trim() !== "" &&
+              !filteredOptions.some(
+                (option) =>
+                  option.name.toLowerCase() === searchTerm.toLowerCase()
+              ) && (
+                <button
+                  className="w-full text-left flex items-center px-4 py-2 text-sm text-text-800 hover:bg-background-100"
+                  role="menuitem"
+                  onClick={handleCustomValueSelect}
+                >
+                  <PlusIcon className="w-4 h-4 mr-2 text-text-600" />
+                  Use &quot;{searchTerm}&quot; as custom value
+                </button>
+              )}
+
+            {onCreate &&
+              searchTerm.trim() !== "" &&
+              !filteredOptions.some(
+                (option) =>
+                  option.name.toLowerCase() === searchTerm.toLowerCase()
+              ) && (
+                <>
+                  <div className="border-t border-background-300"></div>
+                  <button
+                    className="w-full text-left flex items-center px-4 py-2 text-sm text-text-800 hover:bg-background-100"
+                    role="menuitem"
                     onClick={() => {
+                      onCreate(searchTerm);
                       setIsOpen(false);
-                      handleSelect(option);
+                      setSearchTerm("");
                     }}
                   >
-                    {itemComponent({ option })}
-                  </div>
-                ) : (
-                  <StandardDropdownOption
-                    key={index}
-                    option={option}
-                    index={index}
-                    handleSelect={handleSelect}
-                  />
-                )
-              )
-            ) : (
-              <button
-                key={0}
-                className={`w-full text-left block px-4 py-2.5 text-sm hover:bg-hover`}
-                role="menuitem"
-                onClick={() => setIsOpen(false)}
-              >
-                No matches found...
-              </button>
-            )}
+                    <PlusIcon className="w-4 h-4 mr-2 text-text-600" />
+                    Create label &quot;{searchTerm}&quot;
+                  </button>
+                </>
+              )}
+
+            {filteredOptions.length === 0 &&
+              ((!onCreate && !allowCustomValues) ||
+                searchTerm.trim() === "") && (
+                <div className="px-4 py-2.5 text-sm text-text-500">
+                  No matches found
+                </div>
+              )}
           </div>
         </div>
       )}
@@ -261,9 +313,10 @@ export function DefaultDropdownElement({
         my-1
         select-none 
         cursor-pointer 
-        bg-background
+        bg-transparent 
         rounded
-        hover:bg-hover-light
+        text-text-dark
+        hover:bg-accent-background-hovered
       `}
       onClick={onSelect}
     >
@@ -317,6 +370,11 @@ export const DefaultDropdown = forwardRef<HTMLDivElement, DefaultDropdownProps>(
     const selectedOption = options.find((option) => option.value === selected);
     const [isOpen, setIsOpen] = useState(false);
 
+    const handleSelect = (value: any) => {
+      onSelect(value);
+      setIsOpen(false);
+    };
+
     const Content = (
       <div
         className={`
@@ -358,9 +416,7 @@ export const DefaultDropdown = forwardRef<HTMLDivElement, DefaultDropdownProps>(
           <DefaultDropdownElement
             key={-1}
             name="Default"
-            onSelect={() => {
-              onSelect(null);
-            }}
+            onSelect={() => handleSelect(null)}
             isSelected={selected === null}
           />
         )}
@@ -371,7 +427,7 @@ export const DefaultDropdown = forwardRef<HTMLDivElement, DefaultDropdownProps>(
               key={option.value}
               name={option.name}
               description={option.description}
-              onSelect={() => onSelect(option.value)}
+              onSelect={() => handleSelect(option.value)}
               isSelected={isSelected}
               icon={option.icon}
             />
@@ -411,14 +467,17 @@ export function ControlledPopup({
 }) {
   const filtersRef = useRef<HTMLDivElement>(null);
   // hides logout popup on any click outside
-  const handleClickOutside = (event: MouseEvent) => {
-    if (
-      filtersRef.current &&
-      !filtersRef.current.contains(event.target as Node)
-    ) {
-      setIsOpen(false);
-    }
-  };
+  const handleClickOutside = useCallback(
+    (event: MouseEvent) => {
+      if (
+        filtersRef.current &&
+        !filtersRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    },
+    [filtersRef, setIsOpen]
+  );
 
   useEffect(() => {
     document.addEventListener("mousedown", handleClickOutside);
@@ -426,7 +485,7 @@ export function ControlledPopup({
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, []);
+  }, [handleClickOutside]);
 
   return (
     <div ref={filtersRef} className="relative">
@@ -441,7 +500,7 @@ export function ControlledPopup({
             border-border 
             z-30 
             rounded 
-            text-emphasis 
+            text-text-darker 
             shadow-lg`}
           style={{ transform: "translateY(calc(-100% - 5px))" }}
         >

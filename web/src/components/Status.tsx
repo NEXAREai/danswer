@@ -1,7 +1,7 @@
 "use client";
 
 import { ValidStatuses } from "@/lib/types";
-import { Badge } from "@tremor/react";
+import { Badge } from "@/components/ui/badge";
 import {
   FiAlertTriangle,
   FiCheckCircle,
@@ -9,80 +9,82 @@ import {
   FiMinus,
   FiPauseCircle,
 } from "react-icons/fi";
-import { HoverPopup } from "./HoverPopup";
+import { ConnectorCredentialPairStatus } from "@/app/admin/connector/[ccPairId]/types";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export function IndexAttemptStatus({
   status,
   errorMsg,
-  size = "md",
 }: {
   status: ValidStatuses | null;
   errorMsg?: string | null;
-  size?: "xs" | "sm" | "md" | "lg";
 }) {
   let badge;
 
   if (status === "failed") {
     const icon = (
-      <Badge size={size} color="red" icon={FiAlertTriangle}>
+      <Badge variant="destructive" icon={FiAlertTriangle}>
         Failed
       </Badge>
     );
     if (errorMsg) {
       badge = (
-        <HoverPopup
-          mainContent={<div className="cursor-pointer">{icon}</div>}
-          popupContent={
-            <div className="w-64 p-2 break-words overflow-hidden whitespace-normal">
-              {errorMsg}
-            </div>
-          }
-        />
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="cursor-pointer">{icon}</div>
+            </TooltipTrigger>
+            <TooltipContent>{errorMsg}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       );
     } else {
       badge = icon;
     }
   } else if (status === "completed_with_errors") {
-    const icon = (
-      <Badge size={size} color="yellow" icon={FiAlertTriangle}>
+    badge = (
+      <Badge variant="secondary" icon={FiAlertTriangle}>
         Completed with errors
       </Badge>
     );
-    badge = (
-      <HoverPopup
-        mainContent={<div className="cursor-pointer">{icon}</div>}
-        popupContent={
-          <div className="w-64 p-2 break-words overflow-hidden whitespace-normal">
-            The indexing attempt completed, but some errors were encountered
-            during the run.
-            <br />
-            <br />
-            Click View Errors for more details.
-          </div>
-        }
-      />
-    );
   } else if (status === "success") {
     badge = (
-      <Badge size={size} color="green" icon={FiCheckCircle}>
+      <Badge variant="success" icon={FiCheckCircle}>
         Succeeded
       </Badge>
     );
   } else if (status === "in_progress") {
     badge = (
-      <Badge size={size} color="amber" icon={FiClock}>
+      <Badge variant="in_progress" icon={FiClock}>
         In Progress
       </Badge>
     );
   } else if (status === "not_started") {
     badge = (
-      <Badge size={size} color="fuchsia" icon={FiClock}>
+      <Badge variant="not_started" icon={FiClock}>
         Scheduled
+      </Badge>
+    );
+  } else if (status === "canceled") {
+    badge = (
+      <Badge variant="canceled" icon={FiClock}>
+        Canceled
+      </Badge>
+    );
+  } else if (status === "invalid") {
+    badge = (
+      <Badge variant="invalid" icon={FiAlertTriangle}>
+        Invalid
       </Badge>
     );
   } else {
     badge = (
-      <Badge size={size} color="gray" icon={FiMinus}>
+      <Badge variant="outline" icon={FiMinus}>
         None
       </Badge>
     );
@@ -92,42 +94,72 @@ export function IndexAttemptStatus({
 }
 
 export function CCPairStatus({
-  status,
-  disabled,
-  isDeleting,
+  ccPairStatus,
+  inRepeatedErrorState,
+  lastIndexAttemptStatus,
   size = "md",
 }: {
-  status: ValidStatuses;
-  disabled: boolean;
-  isDeleting: boolean;
+  ccPairStatus: ConnectorCredentialPairStatus;
+  inRepeatedErrorState: boolean;
+  lastIndexAttemptStatus: ValidStatuses | undefined | null;
   size?: "xs" | "sm" | "md" | "lg";
 }) {
   let badge;
 
-  if (isDeleting) {
+  if (ccPairStatus == ConnectorCredentialPairStatus.DELETING) {
     badge = (
-      <Badge size={size} color="red" icon={FiAlertTriangle}>
+      <Badge variant="destructive" icon={FiAlertTriangle}>
         Deleting
       </Badge>
     );
-  } else if (disabled) {
+  } else if (ccPairStatus == ConnectorCredentialPairStatus.PAUSED) {
     badge = (
-      <Badge size={size} color="yellow" icon={FiPauseCircle}>
+      <Badge variant="paused" icon={FiPauseCircle}>
         Paused
       </Badge>
     );
-  } else if (status === "failed") {
+  } else if (inRepeatedErrorState) {
     badge = (
-      <Badge size={size} color="red" icon={FiAlertTriangle}>
+      <Badge variant="destructive" icon={FiAlertTriangle}>
         Error
       </Badge>
     );
-  } else {
+  } else if (ccPairStatus == ConnectorCredentialPairStatus.SCHEDULED) {
     badge = (
-      <Badge size={size} color="green" icon={FiCheckCircle}>
-        Active
+      <Badge variant="not_started" icon={FiClock}>
+        Scheduled
       </Badge>
     );
+  } else if (ccPairStatus == ConnectorCredentialPairStatus.INITIAL_INDEXING) {
+    badge = (
+      <Badge variant="in_progress" icon={FiClock}>
+        Initial Indexing
+      </Badge>
+    );
+  } else if (ccPairStatus == ConnectorCredentialPairStatus.INVALID) {
+    badge = (
+      <Badge
+        tooltip="Connector is in an invalid state. Please update the credentials or create a new connector."
+        circle
+        variant="invalid"
+      >
+        Invalid
+      </Badge>
+    );
+  } else {
+    if (lastIndexAttemptStatus && lastIndexAttemptStatus === "in_progress") {
+      badge = (
+        <Badge variant="in_progress" icon={FiClock}>
+          Indexing
+        </Badge>
+      );
+    } else {
+      badge = (
+        <Badge variant="success" icon={FiCheckCircle}>
+          Indexed
+        </Badge>
+      );
+    }
   }
 
   return <div>{badge}</div>;

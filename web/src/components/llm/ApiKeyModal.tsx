@@ -3,9 +3,16 @@
 import { ApiKeyForm } from "./ApiKeyForm";
 import { Modal } from "../Modal";
 import { useRouter } from "next/navigation";
-import { useProviderStatus } from "../chat_search/ProviderContext";
+import { useProviderStatus } from "../chat/ProviderContext";
+import { PopupSpec } from "../admin/connectors/Popup";
 
-export const ApiKeyModal = ({ hide }: { hide: () => void }) => {
+export const ApiKeyModal = ({
+  hide,
+  setPopup,
+}: {
+  hide?: () => void;
+  setPopup: (popup: PopupSpec) => void;
+}) => {
   const router = useRouter();
 
   const {
@@ -17,37 +24,41 @@ export const ApiKeyModal = ({ hide }: { hide: () => void }) => {
   if (!shouldShowConfigurationNeeded) {
     return null;
   }
-
   return (
     <Modal
-      title="Set an API Key!"
+      title="Configure a Generative AI Model"
       width="max-w-3xl w-full"
-      onOutsideClick={() => hide()}
+      onOutsideClick={hide ? () => hide() : undefined}
     >
-      <div className="max-h-[75vh] overflow-y-auto flex flex-col">
-        <div>
-          <div className="mb-5 text-sm">
-            Please provide an API Key below in order to start using
-            Danswer – you can always change this later.
-            <br />
-            If you&apos;d rather look around first, you can
-            <strong onClick={() => hide()} className="text-link cursor-pointer">
-              {" "}
-              skip this step
-            </strong>
-            .
-          </div>
-
-          <ApiKeyForm
-            onSuccess={() => {
-              router.refresh();
-              refreshProviderInfo();
-              hide();
-            }}
-            providerOptions={providerOptions}
-          />
+      <>
+        <div className="mb-5 text-sm text-neutral-700 dark:text-neutral-200">
+          Please provide an API Key – you can always change this or switch
+          models later.
+          <br />
+          {hide && (
+            <>
+              If you would rather look around first, you can{" "}
+              <strong
+                onClick={() => hide()}
+                className="text-link cursor-pointer"
+              >
+                skip this step
+              </strong>
+              .
+            </>
+          )}
         </div>
-      </div>
+
+        <ApiKeyForm
+          setPopup={setPopup}
+          onSuccess={() => {
+            router.refresh();
+            refreshProviderInfo();
+            hide?.();
+          }}
+          providerOptions={providerOptions}
+        />
+      </>
     </Modal>
   );
 };

@@ -1,15 +1,18 @@
 """
 RUN THIS AFTER SEED_DUMMY_DOCS.PY
 """
+
 import random
 import time
 
-from danswer.configs.constants import DocumentSource
-from danswer.configs.model_configs import DOC_EMBEDDING_DIM
-from danswer.db.engine import get_session_context_manager
-from danswer.db.search_settings import get_current_search_settings
-from danswer.document_index.vespa.index import VespaIndex
-from danswer.search.models import IndexFilters
+from onyx.agents.agent_search.shared_graph_utils.models import QueryExpansionType
+from onyx.configs.constants import DocumentSource
+from onyx.configs.model_configs import DOC_EMBEDDING_DIM
+from onyx.context.search.models import IndexFilters
+from onyx.db.engine import get_session_context_manager
+from onyx.db.search_settings import get_current_search_settings
+from onyx.document_index.document_index_utils import get_multipass_config
+from onyx.document_index.vespa.index import VespaIndex
 from scripts.query_time_check.seed_dummy_docs import TOTAL_ACL_ENTRIES_PER_CATEGORY
 from scripts.query_time_check.seed_dummy_docs import TOTAL_DOC_SETS
 from shared_configs.model_server_models import Embedding
@@ -62,9 +65,15 @@ def test_hybrid_retrieval_times(
 ) -> None:
     with get_session_context_manager() as db_session:
         search_settings = get_current_search_settings(db_session)
+        multipass_config = get_multipass_config(search_settings)
         index_name = search_settings.index_name
 
-    vespa_index = VespaIndex(index_name=index_name, secondary_index_name=None)
+    vespa_index = VespaIndex(
+        index_name=index_name,
+        secondary_index_name=None,
+        large_chunks_enabled=multipass_config.enable_large_chunks,
+        secondary_large_chunks_enabled=None,
+    )
 
     # Generate random queries
     queries = [f"Random Query {i}" for i in range(number_of_queries)]
@@ -88,6 +97,7 @@ def test_hybrid_retrieval_times(
             hybrid_alpha=0.5,
             time_decay_multiplier=1.0,
             num_to_retrieve=50,
+            ranking_profile_type=QueryExpansionType.SEMANTIC,
             offset=0,
             title_content_ratio=0.5,
         )
