@@ -26,3 +26,45 @@ jira_test_env
 /deployment/data/nginx/app.conf
 *.sw?
 /backend/tests/regression/answer_quality/search_test_config.yaml
+
+# binary files
+*.bin
+*.exe
+*.dll
+*.so
+*.dylib
+
+# build artifacts
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# logs
+*.log
+logs/
+
+# temporary files
+*.tmp
+*.temp
+.cache/
