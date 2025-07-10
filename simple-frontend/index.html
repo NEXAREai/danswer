@@ -245,9 +245,39 @@
         </div>
         
         <div>
-            <button class="btn" onclick="startSetup()">🚀 Start Setup</button>
-            <button class="btn secondary" onclick="checkStatus()">📊 Check Status</button>
-            <button class="btn secondary" onclick="viewDocs()">📚 Documentation</button>
+            <button class="btn" onclick="startChat()">💬 AI Chat</button>
+            <button class="btn secondary" onclick="showUpload()">📤 Upload Document</button>
+            <button class="btn secondary" onclick="showStats()">📊 Statistics</button>
+            <button class="btn secondary" onclick="checkStatus()">🔄 Check Status</button>
+        </div>
+        
+        <!-- Chat Interface -->
+        <div id="chatInterface" style="display: none; margin-top: 20px;">
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 15px;">
+                <h3>💬 AI Chat</h3>
+                <div id="chatHistory" style="max-height: 300px; overflow-y: auto; margin: 15px 0; padding: 10px; background: white; border-radius: 10px; border: 1px solid #ddd;">
+                    <div style="color: #666; text-align: center; padding: 20px;">Start a conversation with your AI assistant!</div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="chatInput" placeholder="Ask me anything about your documents..." style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                    <button onclick="sendChatMessage()" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">Send</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Upload Interface -->
+        <div id="uploadInterface" style="display: none; margin-top: 20px;">
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 15px;">
+                <h3>📤 Upload Document</h3>
+                <div style="margin: 15px 0;">
+                    <input type="file" id="fileInput" accept=".txt,.md,.pdf,.docx" style="margin-bottom: 10px;">
+                    <br>
+                    <input type="text" id="titleInput" placeholder="Document title (optional)" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+                    <br>
+                    <button onclick="uploadDocument()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">Upload & Index</button>
+                </div>
+                <div id="uploadStatus"></div>
+            </div>
         </div>
         
         <div class="setup-steps" id="setupSteps" style="display: none;">
@@ -274,10 +304,53 @@
     </div>
 
     <script>
-        function performSearch() {
+        async function performSearch() {
             const query = document.getElementById('searchInput').value;
-            if (query.trim()) {
-                alert('🔍 Search functionality requires backend setup.\n\nQuery: "' + query + '"\n\nPlease complete the setup steps to enable full search capabilities.');
+            if (!query.trim()) return;
+            
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = '<strong>🔍 Searching...</strong>';
+            statusDiv.className = 'status';
+            
+            try {
+                const response = await fetch('http://localhost:8080/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        limit: 5
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    displaySearchResults(data);
+                } else {
+                    throw new Error('Search failed');
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = '<strong>❌ Search Error:</strong> Could not connect to backend API. Please check if the backend is running.';
+            }
+        }
+        
+        function displaySearchResults(data) {
+            const statusDiv = document.getElementById('status');
+            
+            if (data.results && data.results.length > 0) {
+                statusDiv.className = 'status';
+                statusDiv.innerHTML = `<strong>✅ Found ${data.results.length} results:</strong><br><br>` +
+                    data.results.map(doc => 
+                        `<div style="margin-bottom: 10px; padding: 10px; background: #f0f0f0; border-radius: 5px;">
+                            <strong>${doc.title}</strong> (${(doc.relevance_score * 100).toFixed(0)}% match)<br>
+                            <small>${doc.content.substring(0, 150)}...</small>
+                        </div>`
+                    ).join('');
+            } else {
+                statusDiv.className = 'status warning';
+                statusDiv.innerHTML = '<strong>⚠️ No Results:</strong> No documents found for your query. Try uploading some documents or using different search terms.';
             }
         }
         
@@ -297,16 +370,20 @@
             statusDiv.innerHTML = '<strong>🔄 Checking status...</strong>';
             
             try {
-                const response = await fetch('/health');
+                const response = await fetch('http://localhost:8080/health');
                 if (response.ok) {
+                    const data = await response.json();
                     statusDiv.className = 'status';
-                    statusDiv.innerHTML = '<strong>✅ System Online:</strong> All services are running correctly!';
+                    statusDiv.innerHTML = '<strong>✅ System Online:</strong> Backend API is running and ready for searches!';
+                    
+                    // Enable search functionality
+                    document.getElementById('searchInput').placeholder = 'Search your documents, chat with AI...';
                 } else {
                     throw new Error('Backend not responding');
                 }
             } catch (error) {
                 statusDiv.className = 'status warning';
-                statusDiv.innerHTML = '<strong>⚠️ Simple Frontend Active:</strong> This is a demo interface. For full functionality, complete the backend setup.';
+                statusDiv.innerHTML = '<strong>⚠️ Backend Offline:</strong> Starting backend API... Please wait a moment and try again.';
             }
         }
         
@@ -314,9 +391,179 @@
             window.open('https://docs.onyx.app/', '_blank');
         }
         
+        // Chat functionality
+        function startChat() {
+            hideAllInterfaces();
+            document.getElementById('chatInterface').style.display = 'block';
+        }
+        
+        async function sendChatMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            const chatHistory = document.getElementById('chatHistory');
+            
+            // Add user message
+            addChatMessage('user', message);
+            input.value = '';
+            
+            // Add loading message
+            const loadingId = addChatMessage('ai', '🤔 Thinking...');
+            
+            try {
+                const response = await fetch('http://localhost:8080/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        session_id: 'web_session_' + Date.now()
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    updateChatMessage(loadingId, data.response);
+                } else {
+                    updateChatMessage(loadingId, '❌ Sorry, I encountered an error. Please try again.');
+                }
+            } catch (error) {
+                updateChatMessage(loadingId, '❌ Could not connect to AI service. Please check if the backend is running.');
+            }
+        }
+        
+        function addChatMessage(sender, message) {
+            const chatHistory = document.getElementById('chatHistory');
+            const messageId = 'msg_' + Date.now();
+            const messageDiv = document.createElement('div');
+            messageDiv.id = messageId;
+            messageDiv.style.marginBottom = '10px';
+            messageDiv.style.padding = '10px';
+            messageDiv.style.borderRadius = '10px';
+            
+            if (sender === 'user') {
+                messageDiv.style.background = '#667eea';
+                messageDiv.style.color = 'white';
+                messageDiv.style.marginLeft = '20%';
+                messageDiv.innerHTML = `<strong>You:</strong> ${message}`;
+            } else {
+                messageDiv.style.background = '#e9ecef';
+                messageDiv.style.marginRight = '20%';
+                messageDiv.innerHTML = `<strong>🤖 Onyx:</strong> ${message}`;
+            }
+            
+            chatHistory.appendChild(messageDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+            
+            // Clear initial message if present
+            const initialMsg = chatHistory.querySelector('div[style*="text-align: center"]');
+            if (initialMsg) initialMsg.remove();
+            
+            return messageId;
+        }
+        
+        function updateChatMessage(messageId, newContent) {
+            const messageDiv = document.getElementById(messageId);
+            if (messageDiv) {
+                messageDiv.innerHTML = `<strong>🤖 Onyx:</strong> ${newContent}`;
+            }
+        }
+        
+        // Upload functionality
+        function showUpload() {
+            hideAllInterfaces();
+            document.getElementById('uploadInterface').style.display = 'block';
+        }
+        
+        async function uploadDocument() {
+            const fileInput = document.getElementById('fileInput');
+            const titleInput = document.getElementById('titleInput');
+            const statusDiv = document.getElementById('uploadStatus');
+            
+            if (!fileInput.files[0]) {
+                statusDiv.innerHTML = '<div style="color: red;">Please select a file to upload.</div>';
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            if (titleInput.value.trim()) {
+                formData.append('title', titleInput.value.trim());
+            }
+            
+            statusDiv.innerHTML = '<div style="color: blue;">📤 Uploading and indexing document...</div>';
+            
+            try {
+                const response = await fetch('http://localhost:8080/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    statusDiv.innerHTML = `<div style="color: green;">✅ Document uploaded successfully!<br>
+                        <strong>Title:</strong> ${data.title}<br>
+                        <strong>Content Length:</strong> ${data.content_length} characters<br>
+                        <strong>Indexed:</strong> ${data.indexed ? 'Yes' : 'No'}</div>`;
+                    
+                    // Clear form
+                    fileInput.value = '';
+                    titleInput.value = '';
+                } else {
+                    const error = await response.json();
+                    statusDiv.innerHTML = `<div style="color: red;">❌ Upload failed: ${error.detail}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = '<div style="color: red;">❌ Could not connect to upload service. Please check if the backend is running.</div>';
+            }
+        }
+        
+        // Statistics functionality
+        async function showStats() {
+            hideAllInterfaces();
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = '<strong>📊 Loading statistics...</strong>';
+            
+            try {
+                const response = await fetch('http://localhost:8080/stats');
+                if (response.ok) {
+                    const data = await response.json();
+                    const stats = data.statistics;
+                    statusDiv.className = 'status';
+                    statusDiv.innerHTML = `<strong>📊 System Statistics:</strong><br><br>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left;">
+                            <div>📄 Total Documents: <strong>${stats.total_documents}</strong></div>
+                            <div>🔍 Total Searches: <strong>${stats.total_searches}</strong></div>
+                            <div>💬 Total Chats: <strong>${stats.total_chats}</strong></div>
+                            <div>📈 Recent Searches (24h): <strong>${stats.recent_searches_24h}</strong></div>
+                        </div>`;
+                } else {
+                    throw new Error('Stats failed');
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = '<strong>❌ Statistics Error:</strong> Could not load system statistics.';
+            }
+        }
+        
+        function hideAllInterfaces() {
+            document.getElementById('chatInterface').style.display = 'none';
+            document.getElementById('uploadInterface').style.display = 'none';
+            document.getElementById('setupSteps').style.display = 'none';
+        }
+        
+        // Event listeners
         document.getElementById('searchInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 performSearch();
+            }
+        });
+        
+        document.addEventListener('keypress', function(e) {
+            if (e.target.id === 'chatInput' && e.key === 'Enter') {
+                sendChatMessage();
             }
         });
         
