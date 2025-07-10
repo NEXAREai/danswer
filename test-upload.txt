@@ -1,0 +1,13 @@
+Test Document for Upload Functionality
+
+This is a test document to verify the upload functionality of the Onyx platform.
+
+Key Features:
+- Document upload and processing
+- Full-text search capabilities
+- AI-powered chat interface
+- Statistics and analytics dashboard
+
+The platform provides enterprise-grade document management and search capabilities with an intuitive user interface.
+
+Test Keywords: upload, search, AI, chat, analytics, enterprise, document management
