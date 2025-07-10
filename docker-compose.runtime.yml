@@ -1,0 +1,124 @@
+version: '3.8'
+
+services:
+  # Web frontend service
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "12000:3000"  # Map to runtime port 12000
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:12001
+      - NEXT_PUBLIC_DISABLE_STREAMING=false
+      - NODE_ENV=production
+    depends_on:
+      - api
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API backend service
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "12001:8080"  # Map to runtime port 12001
+    environment:
+      - POSTGRES_HOST=db
+      - VESPA_HOST=search
+      - REDIS_HOST=cache
+      - AUTH_TYPE=basic
+      - SECRET_KEY=${SECRET_KEY:-onyx-secret-key-change-in-production}
+      - CORS_ALLOWED_ORIGINS=https://work-1-gqvpkgutqrgfvhqq.prod-runtime.all-hands.dev,https://work-2-gqvpkgutqrgfvhqq.prod-runtime.all-hands.dev
+    depends_on:
+      - db
+      - search
+      - cache
+    restart: unless-stopped
+    command: >
+      /bin/sh -c "
+      alembic upgrade head &&
+      echo 'Starting Onyx API Server' &&
+      uvicorn onyx.main:app --host 0.0.0.0 --port 8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL database
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=onyx
+      - POSTGRES_USER=onyx
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-onyx-password-change-in-production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onyx"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Vespa search engine
+  search:
+    image: vespaengine/vespa:8
+    ports:
+      - "8081:8080"
+      - "19071:19071"
+    volumes:
+      - vespa_data:/opt/vespa/var
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ApplicationStatus"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis cache
+  cache:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Background worker
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - POSTGRES_HOST=db
+      - VESPA_HOST=search
+      - REDIS_HOST=cache
+      - SECRET_KEY=${SECRET_KEY:-onyx-secret-key-change-in-production}
+    depends_on:
+      - db
+      - search
+      - cache
+    restart: unless-stopped
+    command: >
+      /bin/sh -c "
+      echo 'Starting Onyx Background Worker' &&
+      celery -A onyx.background.celery worker --loglevel=info"
+
+volumes:
+  postgres_data:
+  vespa_data:
+  redis_data:
+
+networks:
+  default:
+    name: onyx-network

@@ -1,0 +1,137 @@
+# Onyx Security Configuration
+# This file contains security settings and recommendations for the Onyx deployment
+
+security:
+  # Authentication settings
+  authentication:
+    # Supported auth types: basic, oidc, saml, oauth2
+    auth_type: "oidc"
+    
+    # Session settings
+    session:
+      timeout_minutes: 480  # 8 hours
+      secure_cookies: true
+      same_site: "strict"
+      
+    # Password policy (for basic auth)
+    password_policy:
+      min_length: 12
+      require_uppercase: true
+      require_lowercase: true
+      require_numbers: true
+      require_special_chars: true
+      max_age_days: 90
+      
+  # Authorization settings
+  authorization:
+    # Role-based access control
+    rbac:
+      enabled: true
+      default_role: "user"
+      admin_role: "admin"
+      
+    # Document-level permissions
+    document_permissions:
+      enabled: true
+      inherit_from_source: true
+      
+  # Data protection
+  data_protection:
+    # Encryption settings
+    encryption:
+      # Encrypt data at rest
+      at_rest: true
+      # Encrypt data in transit
+      in_transit: true
+      # Encryption algorithm
+      algorithm: "AES-256-GCM"
+      
+    # Data retention
+    retention:
+      # Default retention period in days
+      default_days: 2555  # 7 years
+      # Auto-delete expired data
+      auto_delete: true
+      
+    # Data anonymization
+    anonymization:
+      # Enable PII detection and masking
+      pii_detection: true
+      # Anonymize user data in logs
+      log_anonymization: true
+      
+  # Network security
+  network:
+    # HTTPS settings
+    https:
+      enabled: true
+      force_redirect: true
+      hsts_enabled: true
+      hsts_max_age: 31536000  # 1 year
+      
+    # CORS settings
+    cors:
+      allowed_origins: []  # Specify allowed origins
+      allowed_methods: ["GET", "POST", "PUT", "DELETE"]
+      allowed_headers: ["Content-Type", "Authorization"]
+      
+    # Rate limiting
+    rate_limiting:
+      enabled: true
+      requests_per_minute: 100
+      burst_size: 20
+      
+  # API security
+  api:
+    # API key settings
+    api_keys:
+      enabled: true
+      rotation_days: 90
+      
+    # Request validation
+    validation:
+      max_request_size: "10MB"
+      validate_content_type: true
+      
+  # Logging and monitoring
+  logging:
+    # Security event logging
+    security_events: true
+    # Log level for security events
+    security_log_level: "INFO"
+    # Log retention period
+    log_retention_days: 365
+    
+    # Audit logging
+    audit:
+      enabled: true
+      log_all_requests: false
+      log_sensitive_operations: true
+      
+  # Vulnerability management
+  vulnerability_management:
+    # Dependency scanning
+    dependency_scanning:
+      enabled: true
+      scan_frequency: "weekly"
+      
+    # Security headers
+    security_headers:
+      x_frame_options: "DENY"
+      x_content_type_options: "nosniff"
+      x_xss_protection: "1; mode=block"
+      referrer_policy: "strict-origin-when-cross-origin"
+      content_security_policy: "default-src 'self'"
+
+# Security recommendations
+recommendations:
+  - "Enable multi-factor authentication for admin accounts"
+  - "Regularly rotate API keys and secrets"
+  - "Implement network segmentation for production deployments"
+  - "Use a Web Application Firewall (WAF) in production"
+  - "Regularly update dependencies and scan for vulnerabilities"
+  - "Implement backup and disaster recovery procedures"
+  - "Conduct regular security assessments and penetration testing"
+  - "Train users on security best practices"
+  - "Monitor and alert on suspicious activities"
+  - "Implement zero-trust network architecture"

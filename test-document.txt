@@ -1,0 +1,30 @@
+Onyx AI Platform Features
+
+This document describes the key features of the Onyx AI platform:
+
+1. Intelligent Search
+   - Semantic search capabilities
+   - Natural language processing
+   - Context-aware results
+
+2. AI Chat Assistant
+   - Interactive conversations
+   - Document-based responses
+   - Real-time assistance
+
+3. Document Management
+   - Multiple file format support
+   - Automatic indexing
+   - Version control
+
+4. Enterprise Features
+   - Security compliance
+   - User management
+   - API integrations
+
+5. Analytics and Insights
+   - Search analytics
+   - Usage statistics
+   - Performance metrics
+
+The platform is designed to help organizations unlock the value of their data through intelligent search and AI-powered interactions.
